@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="律动四环">
+<meta name="theme-color" content="#0b0f1a">
+<link rel="apple-touch-icon" href="assets/icons/appicon.png">
+<link rel="manifest" href="manifest.json">
+<title>律动四环 · 同心打击</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; overflow:hidden; background:#0b0f1a url('assets/bg.jpg') center/cover no-repeat fixed; font-family:"Segoe UI","Microsoft YaHei",sans-serif; color:#eef; user-select:none; }
+  body::before { content:""; position:fixed; inset:0; background:
+      radial-gradient(55% 45% at 50% 0%, rgba(76,201,240,.10), transparent 70%),
+      radial-gradient(45% 40% at 50% 110%, rgba(233,196,106,.08), transparent 70%),
+      rgba(8,11,20,.32);   /* 深色蒙版（调亮，让封面人物可见） */
+      pointer-events:none; }
+
+  /* 全息感：极淡扫描线 + 边缘光晕 */
+  body::after { content:""; position:fixed; inset:0; z-index:7; pointer-events:none;
+      background:
+        repeating-linear-gradient(0deg, rgba(180,255,245,.045) 0 1px, transparent 1px 3px),
+        radial-gradient(120% 100% at 50% 50%, transparent 55%, rgba(4,8,14,.45) 100%);
+      mix-blend-mode:screen; opacity:.85; }
+  #hud { position:fixed; top:0; left:0; right:0; display:flex; justify-content:space-between; padding:18px 26px; pointer-events:none; z-index:5; }
+  .hud-label { font-size:12px; letter-spacing:.2em; opacity:.5; text-align:center; }
+  .hud-value { font-size:26px; font-weight:700; color:#e9c46a; text-shadow:0 0 14px rgba(233,196,106,.45); font-variant-numeric:tabular-nums; text-align:center; }
+  #combo { position:fixed; top:14px; left:50%; transform:translateX(-50%); text-align:center; pointer-events:none; z-index:5; transition:transform .08s; }
+  #combo-num { font-size:44px; font-weight:800; color:#fff; text-shadow:0 0 22px rgba(76,201,240,.8); font-variant-numeric:tabular-nums; }
+  #combo-label { font-size:12px; letter-spacing:.4em; opacity:.55; }
+  #combo.bump { transform:translateX(-50%) scale(1.18); }
+
+  #btn-pause { position:fixed; top:8px; right:10px; z-index:8; width:34px; height:34px; border-radius:50%;
+      border:1px solid rgba(233,196,106,.25); background:rgba(11,15,26,.28); color:#e9c46a;
+      font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center;
+      opacity:.35; transition:opacity .3s; }
+  #btn-pause:active { opacity:.9; }
+
+  /* 顶部炫光进度条：游戏进行中显示歌曲剩余进度 */
+  #prog { position:fixed; left:0; right:0; top:0; height:6px; z-index:9; pointer-events:none; }
+  #prog-track { position:absolute; left:0; right:0; top:0; height:6px;
+      background:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.02));
+      box-shadow:inset 0 -1px 0 rgba(255,255,255,.06); }
+  #prog-fill { position:relative; height:100%; width:100%;
+      background:linear-gradient(90deg,#4cc9f0,#80ed99,#fff6b0,#4cc9f0);
+      background-size:300% 100%;
+      animation:progflow 2.6s linear infinite;
+      box-shadow:0 0 12px rgba(76,201,240,.9), 0 0 26px rgba(128,237,153,.55); }
+  #prog-fill::after { content:""; position:absolute; top:-2px; right:-4px; width:14px; height:10px;
+      border-radius:50%; background:radial-gradient(circle,#fff 0%,rgba(159,246,255,.9) 45%,rgba(159,246,255,0) 72%);
+      box-shadow:0 0 14px #4cc9f0, 0 0 26px #80ed99; }
+  @keyframes progflow { 0% { background-position:0% 50%; } 100% { background-position:300% 50%; } }
+  #prog-time { position:absolute; right:10px; top:9px; font-size:10px; letter-spacing:.08em;
+      color:#8ff3ec; opacity:.6; font-variant-numeric:tabular-nums;
+      text-shadow:0 0 8px rgba(76,201,240,.8); }
+
+  /* 模式选择器 */
+  #mode-row { display:flex; gap:16px; justify-content:center; width:min(540px,92%); flex-wrap:wrap; }
+  .mode-card { cursor:pointer; padding:14px 22px; border-radius:18px; min-width:132px;
+      border:1px solid rgba(233,196,106,.35); background:rgba(233,196,106,.06);
+      color:#e9c46a; font-size:15px; font-weight:600; transition:.2s; text-align:center;
+      display:flex; flex-direction:column; align-items:center; gap:6px; line-height:1.2; }
+  .mode-card .icon { font-size:28px; line-height:1; }
+  .mode-card .desc { font-size:11px; opacity:.55; font-weight:400; letter-spacing:.02em; }
+  .mode-card:hover { background:rgba(233,196,106,.18); transform:translateY(-2px); box-shadow:0 0 24px rgba(233,196,106,.25); }
+  .mode-card.active { background:rgba(233,196,106,.22); border-color:#e9c46a; box-shadow:0 0 30px rgba(233,196,106,.4); }
+
+  #game { position:fixed; inset:0; z-index:2; touch-action:none; pointer-events:auto; display:block; }
+  #stage-wrap { position:fixed; inset:0; z-index:2; pointer-events:none; }
+
+  .overlay { position:fixed; inset:0; background:linear-gradient(180deg,rgba(8,11,20,.35),rgba(8,11,20,.72)); -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); display:flex; flex-direction:column;
+      align-items:center; justify-content:flex-start; gap:18px; z-index:10; text-align:center; padding:28px 24px 40px; overflow-y:auto; padding-top:env(safe-area-inset-top,28px); }
+  .overlay h1 { font-size:clamp(28px,6vw,46px); font-weight:800; letter-spacing:.12em;
+      background:linear-gradient(90deg,#e9c46a,#f72585,#4cc9f0); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .overlay p.sub { opacity:.6; font-size:14px; line-height:1.9; max-width:540px; }
+  .btn { padding:14px 34px; border-radius:999px; border:1px solid rgba(233,196,106,.5); background:rgba(233,196,106,.08);
+      color:#e9c46a; font-size:17px; font-weight:600; cursor:pointer; transition:.2s; letter-spacing:.05em; }
+  .btn:hover { background:rgba(233,196,106,.2); box-shadow:0 0 24px rgba(233,196,106,.35); transform:translateY(-2px); }
+  .btn.alt { border-color:rgba(76,201,240,.5); color:#4cc9f0; background:rgba(76,201,240,.07); }
+  .btn.alt:hover { background:rgba(76,201,240,.18); box-shadow:0 0 24px rgba(76,201,240,.3); }
+  #file-input { display:none; }
+  #song-name { font-size:13px; color:#80ed99; min-height:18px; }
+  .stat-row { display:flex; gap:34px; font-size:15px; }
+  .stat-row b { display:block; font-size:30px; margin-top:4px; }
+  #rank { font-size:84px; font-weight:900; color:#e9c46a; text-shadow:0 0 40px rgba(233,196,106,.7); }
+  .hidden { display:none !important; }
+
+  /* 竖屏提示（iOS 无法锁定方向，请手动横屏） */
+  #rotate-hint { position:fixed; inset:0; z-index:12; display:none; flex-direction:column;
+      align-items:center; justify-content:center; gap:16px; text-align:center;
+      background:rgba(6,10,18,.94); color:#e9c46a; font-size:19px; letter-spacing:.06em; }
+  #rotate-hint .ico { font-size:52px; animation:spin 2.2s ease-in-out infinite; }
+  @keyframes spin { 0%,100% { transform:rotate(0); } 50% { transform:rotate(90deg); } }
+  @media (orientation:portrait) { #rotate-hint.on { display:flex; } }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <div><div class="hud-label">SCORE</div><div class="hud-value" id="score">0</div></div>
+  <div><div class="hud-label">ACC</div><div class="hud-value" id="acc">100%</div></div>
+</div>
+<div id="combo" class="hidden"><div id="combo-num">0</div><div id="combo-label">COMBO</div></div>
+<button id="btn-pause" class="hidden">⏸</button>
+<div id="rotate-hint"><div class="ico">📱</div><div>请把手机横过来游玩</div><div style="font-size:13px;opacity:.55">横屏后提示自动消失</div></div>
+<div id="prog" class="hidden">
+  <div id="prog-track"><div id="prog-fill"></div></div>
+  <div id="prog-time">--:--</div>
+</div>
+
+<div id="stage-wrap"><canvas id="game"></canvas></div>
+
+<div class="overlay" id="start-overlay">
+  <h1>律动四环</h1>
+  <p class="sub">选一种玩法开始：</p>
+  <div id="mode-row">
+    <div class="mode-card active" data-mode="ring"><div class="icon">🎯</div>同心圆环<div class="desc">光点在左右舞台交替出现</div></div>
+    <div class="mode-card" data-mode="fall"><div class="icon">⬇️</div>下落按键<div class="desc">4 列音符从顶部滚到底</div></div>
+    <div class="mode-card" data-mode="taiko"><div class="icon">🥁</div>太鼓对拍<div class="desc">只分左右，咚 / 咔</div></div>
+  </div>
+  <p class="sub" style="font-size:12px;opacity:.55">⚠️ 网易云 VIP 的 .ncm 加密格式浏览器无法播放，请用 mp3/flac/wav。</p>
+  <div id="song-name"></div>
+  <input type="file" id="file-input" accept="audio/*">
+  <button class="btn" id="btn-music">🎵 选择本地音乐开始</button>
+  <button class="btn" id="btn-us1">🎤 最后的旅行 — 绘梨衣（龙族）</button>
+  <button class="btn alt" id="btn-us2">🎤 最后的旅行（纯歌版）— Rainton桐</button>
+  <button class="btn alt" id="btn-us3">🎤 天気の子 — STRlighT</button>
+  <div style="display:flex;gap:10px;width:min(540px,92%)">
+    <input id="url-input" type="text" placeholder="粘贴音乐直链（mp3/flac/ogg）。汽水/网易云等 App 内分享链接有版权加密，浏览器无法读取"
+      style="flex:1;padding:12px 18px;border-radius:999px;border:1px solid rgba(76,201,240,.4);background:rgba(11,15,26,.7);color:#eef;font-size:14px;outline:none">
+    <button class="btn alt" id="btn-url" style="padding:12px 22px;white-space:nowrap">▶ 播放</button>
+  </div>
+  <button class="btn" id="btn-song1">🎧 Faster Does It（电子强拍）</button>
+  <button class="btn alt" id="btn-song2">🎧 Pixel Peeker Polka（欢快节奏）</button>
+  <button class="btn alt" id="btn-song3">🎧 Monkeys Spinning Monkeys（跳跃鼓点）</button>
+  <div style="width:min(540px,92%);text-align:left">
+    <div style="display:flex;justify-content:space-between;font-size:14px;color:#80ed99;margin-bottom:6px">
+      <span>🎚️ 速度 / 难度</span><span id="speed-val">0.6×</span>
+    </div>
+    <input id="speed-slider" type="range" min="0.6" max="2.0" step="0.1" value="0.6"
+      style="width:100%;accent-color:#4cc9f0">
+    <div style="display:flex;justify-content:space-between;font-size:11px;opacity:.4;margin-top:2px">
+      <span>慢 (0.6×)</span><span>普通 (1.0×)</span><span>快 (2.0×)</span>
+    </div>
+  </div>
+  <button class="btn alt" id="btn-track1">🌟 星光跑道（合成 128 BPM）</button>
+  <button class="btn alt" id="btn-track2">🌙 夜航（合成 96 BPM）</button>
+  <p class="sub" style="font-size:11px;opacity:.4">🎧 内置曲目：Kevin MacLeod (incompetech.com) CC BY 4.0</p>
+</div>
+
+<div class="overlay hidden" id="end-overlay">
+  <div id="rank">S</div>
+  <div class="stat-row">
+    <div>得分<b id="r-score">0</b></div>
+    <div>最大连击<b id="r-combo">0</b></div>
+    <div>准确率<b id="r-acc">0%</b></div>
+  </div>
+  <div class="stat-row" style="font-size:13px;opacity:.7">
+    <div>Perfect<b id="r-perfect" style="color:#ffd76a">0</b></div>
+    <div>Good<b id="r-good" style="color:#4cc9f0">0</b></div>
+    <div>Miss<b id="r-miss" style="color:#8a93a8">0</b></div>
+  </div>
+  <button class="btn" id="btn-again">再来一局</button>
+</div>
+
+<div class="overlay hidden" id="pause-overlay">
+  <h1>已暂停</h1>
+  <button class="btn" id="btn-resume">▶ 继续游戏</button>
+  <button class="btn alt" id="btn-exit">🏠 返回主界面</button>
+</div>
+
+<script>
+(() => {
+  /* iOS / 老版本 Safari 兼容：roundRect 兜底 */
+  if (!CanvasRenderingContext2D.prototype.roundRect) {
+    CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+      r = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
+      this.moveTo(x + r, y);
+      this.arcTo(x + w, y, x + w, y + h, r);
+      this.arcTo(x + w, y + h, x, y + h, r);
+      this.arcTo(x, y + h, x, y, r);
+      this.arcTo(x, y, x + w, y, r);
+      this.closePath();
+      return this;
+    };
+  }
+
+  let LEAD_IN = 0.3;             // 光点提前出现时长(秒) —— 0.3秒反应时间
+  let WIN_PERFECT = 0.10, WIN_GOOD = 0.20;
+  let SPEED = 0.6;               // 难度/速度倍率（初始最低难度）
+  let GAME_MODE = 'ring';        // ring | fall | taiko
+  const COLORS = ['#e9c46a', '#4cc9f0', '#f72585', '#80ed99'];
+  function applyDifficulty() {
+    LEAD_IN = 0.3 / SPEED;
+    WIN_PERFECT = 0.10 / SPEED;
+    WIN_GOOD = 0.20 / SPEED;
+  }
+
+  const cv = document.getElementById('game'), ctx = cv.getContext('2d');
+  const stageWrap = document.getElementById('stage-wrap');
+  const scoreEl = document.getElementById('score'), accEl = document.getElementById('acc');
+  const comboBox = document.getElementById('combo'), comboNum = document.getElementById('combo-num');
+
+  let W, H, cx1, cx2, cy, maxR, ringR = [], noteR;
+  function resize() {
+    W = innerWidth; H = innerHeight;
+    cv.width = W * devicePixelRatio; cv.height = H * devicePixelRatio;
+    cv.style.width = W + 'px'; cv.style.height = H + 'px';
+    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    cy = H / 2;
+    cx1 = W * 0.25; cx2 = W * 0.75;             // 左右两个舞台中心
+    maxR = Math.min(W / 2, H) * 0.44;           // 每个舞台占半屏宽
+    ringR = [0.30, 0.53, 0.76, 1.0].map(f => f * maxR);
+    noteR = Math.max(30, maxR * 0.16);
+  }
+  addEventListener('resize', resize); resize();
+  addEventListener('resize', () => {
+    const rh = document.getElementById('rotate-hint');
+    if (rh) rh.classList.toggle('on', playing && innerHeight > innerWidth);
+  });
+
+  let actx, analyser, freqData, audio, playing = false;
+  let notes = [], particles = [], ripples = [], floats = [], tapRipples = [], links = [], lightFalls = [], jointFx = [];
+  const ICONS = ['assets/icons/kitty.png', 'assets/icons/bunny.png', 'assets/icons/bear.png']
+    .map(s => { const im = new Image(); im.src = s; return im; });
+  let iconBursts = [];   // 击中后弹出的可爱小贴纸
+  let score = 0, combo = 0, maxCombo = 0;
+  let cnt = { perfect: 0, good: 0, miss: 0 };
+  let lastBeatT = 0, baseline = [], synthTimer = null;
+  let currentTrack = null, synthStep = 0, synthNextT = 0, stepDur = 0, endTimer = null;
+  let synthTotal = 0, synthStart = 0;   // 合成曲总时长与起点，用于进度条
+  let lastRing = -1, lastAngle = 0, lastNote = null;
+  const SHAPES = ['circle', 'diamond', 'triangle', 'star', 'hex', 'square'];   // 按钮多种形态
+
+  /* ---------- 音频 ---------- */
+  function initAudio() {
+    if (actx) return;
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = actx.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.55;
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+    analyser.connect(actx.destination);
+    // iOS：必须在用户手势内唤醒音频，否则后续播放会被系统拦截
+    if (actx.state === 'suspended') actx.resume().catch(() => {});
+    try {
+      const b = actx.createBuffer(1, 1, 22050);
+      const s = actx.createBufferSource();
+      s.buffer = b; s.connect(actx.destination); s.start(0);
+    } catch (e) { /* ignore */ }
+  }
+
+  /* 兼容 iOS 的播放：被拦截时等待下一次触摸再重试 */
+  function safePlay(el) {
+    const p = el.play();
+    if (p && p.catch) p.catch(() => {
+      const once = () => {
+        document.removeEventListener('pointerdown', once);
+        document.removeEventListener('touchstart', once);
+        el.play().catch(() => {});
+      };
+      document.addEventListener('pointerdown', once, { once: true });
+      document.addEventListener('touchstart', once, { once: true });
+    });
+  }
+  function startWithFile(file) {
+    initAudio();
+    applyDifficulty();
+    audio = new Audio();
+    audio.src = URL.createObjectURL(file);
+    actx.createMediaElementSource(audio).connect(analyser);
+    audio.onended = endGame;
+    actx.resume().then(() => { safePlay(audio); begin(); });
+  }
+  function startWithURL(url, name) {
+    initAudio();
+    applyDifficulty();
+    audio = new Audio();
+    audio.style.display = 'none';
+    document.body.appendChild(audio);      // 挂到 DOM，部分浏览器要求
+    audio.src = url;
+    actx.createMediaElementSource(audio).connect(analyser);
+    audio.onended = endGame;
+    document.getElementById('song-name').textContent = '♪ ' + name;
+    actx.resume().then(() => {
+      safePlay(audio);
+      begin();
+    });
+  }
+
+  /* ---------- 音频下载：用原生 HTTP 下载为 blob，绕过跨域静音 ---------- */
+  function getHttpPlugin() {
+    return window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Http;
+  }
+  async function downloadToBlob(url) {
+    const Http = getHttpPlugin();
+    if (!Http) throw new Error('HTTP 插件未加载');
+    const resp = await Http.get({ url, responseType: 'arraybuffer', connectTimeout: 30000, readTimeout: 60000 });
+    let blob;
+    const d = resp.data;
+    if (d instanceof Blob) blob = d;
+    else if (d instanceof ArrayBuffer) blob = new Blob([d], { type: 'audio/mpeg' });
+    else if (d && typeof d === 'object' && d.byteLength != null) blob = new Blob([d], { type: 'audio/mpeg' });
+    else if (typeof d === 'string') {
+      try {
+        const bin = atob(d);
+        const arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        blob = new Blob([arr], { type: 'audio/mpeg' });
+      } catch (e) { throw new Error('音频数据解码失败'); }
+    }
+    if (!blob || blob.size < 5000) throw new Error(`音频下载失败（数据 ${blob ? blob.size : 0} 字节）`);
+    return URL.createObjectURL(blob);
+  }
+
+  /* ---------- 汽水音乐：通过 track_id 解析并下载播放 ---------- */
+  async function playQishuiTrack(id) {
+    const nameEl = document.getElementById('song-name');
+    const Http = getHttpPlugin();
+    if (!Http) throw new Error('HTTP 插件未加载');
+    nameEl.textContent = '正在获取歌曲信息…';
+    const apiResp = await Http.get({ url: `https://ffapi.cn/int/v1/dg_qishui?track_id=${id}&format=json`, responseType: 'text' });
+    const data = JSON.parse(apiResp.data);
+    if (data.code !== 200 || !data.url) throw new Error(data.msg || '无音频（可能是 VIP 歌曲）');
+    nameEl.textContent = `正在下载《${data.title}》…`;
+    const objUrl = await downloadToBlob(data.url);
+    reset();
+    startWithURL(objUrl, `${data.title || '汽水音乐'} — ${data.singer || ''}`);
+  }
+
+  /* ---------- 内置曲目（鼓 + 贝斯 + 旋律 音序器） ---------- */
+  const TRACKS = [
+    { name: '星光跑道', bpm: 128, root: 57,   // A3
+      mel:  [0,-1,7,-1, 12,-1,7,-1, 10,-1,7,-1, 3,-1,7,-1, 5,-1,7,-1, 12,-1,10,-1, 7,-1,3,-1, 0,-1,-1,-1],
+      bass: [0,0,7,7, 5,5,3,3] },
+    { name: '夜航', bpm: 96, root: 55,        // G3
+      mel:  [0,-1,-1,7, -1,-1,5,-1, 3,-1,-1,0, -1,-1,-1,-1, 10,-1,-1,7, -1,-1,5,-1, 3,-1,2,-1, 0,-1,-1,-1],
+      bass: [0,0,3,3, 5,5,7,7] },
+  ];
+  const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+
+  function runSynthLoop() {
+    synthTimer = setInterval(() => {
+      if (!playing) return;
+      const now = actx.currentTime;
+      while (synthNextT < now + LEAD_IN + 0.1) {
+        const s = synthStep % currentTrack.mel.length;
+        if (s % 2 === 0) {                       // 每拍：鼓点 + 游戏音符
+          scheduleKick(synthNextT);
+          spawnNote(synthNextT);
+        }
+        if (s % 4 === 2) scheduleHat(synthNextT);     // 反拍踩镲
+        if (s % 2 === 0) {                       // 贝斯
+          const b = currentTrack.bass[(s / 2) % currentTrack.bass.length];
+          scheduleTone(mtof(currentTrack.root - 12 + b), synthNextT, stepDur * 1.8, 'triangle', 0.22);
+        }
+        const m = currentTrack.mel[s];                  // 旋律
+        if (m >= 0) scheduleTone(mtof(currentTrack.root + 12 + m), synthNextT, stepDur * 0.9, 'square', 0.10);
+        synthStep++; synthNextT += stepDur;
+      }
+    }, 50);
+  }
+
+  function startTrack(track) {
+    initAudio(); actx.resume();
+    applyDifficulty();
+    currentTrack = track;
+    stepDur = (60 / track.bpm / 2) / SPEED;      // 八分音符，速度倍率影响
+    const totalSteps = track.mel.length * 4; // 循环 4 遍
+    synthStep = 0; synthNextT = actx.currentTime + 0.8;
+    synthTotal = totalSteps * stepDur + 2;      // 合成曲总时长
+    synthStart = actx.currentTime + 0.8;
+    runSynthLoop();
+    endTimer = setTimeout(endGame, synthTotal * 1000);
+    begin();
+  }
+
+  function scheduleTone(freq, t, dur, type, vol) {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g).connect(actx.destination);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  function scheduleHat(t) {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = 'square'; o.frequency.setValueAtTime(8000, t);
+    g.gain.setValueAtTime(0.06, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+    o.connect(g).connect(actx.destination);
+    o.start(t); o.stop(t + 0.05);
+  }
+  function scheduleKick(t) {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.frequency.setValueAtTime(150, t);
+    o.frequency.exponentialRampToValueAtTime(48, t + 0.12);
+    g.gain.setValueAtTime(0.9, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    o.connect(g).connect(actx.destination);
+    o.start(t); o.stop(t + 0.18);
+  }
+  let timeData = null;
+  function beatDetect() {
+    if (!timeData) timeData = new Float32Array(analyser.fftSize);
+    analyser.getFloatTimeDomainData(timeData);        // 时域 RMS，对鼓点瞬态更敏感
+    let sum = 0;
+    for (let k = 0; k < timeData.length; k++) sum += timeData[k] * timeData[k];
+    const e = Math.sqrt(sum / timeData.length);
+    baseline.push(e); if (baseline.length > 60) baseline.shift();
+    if (baseline.length < 15) return;                 // 先积累基线
+    const avg = baseline.reduce((a, b) => a + b, 0) / baseline.length;
+    const t = actx.currentTime;
+    if (e > 0.045 && e > avg * 1.4 && t - lastBeatT > 0.22 / SPEED) {
+      lastBeatT = t;
+      spawnNote(t + LEAD_IN);        // 光点在下一拍前 LEAD_IN 秒现身
+    } else if (t - lastBeatT > 1.5) {
+      lastBeatT = t;                 // 兜底：长时间没检测到节拍也出音符，保证可玩
+      spawnNote(t + LEAD_IN);
+    }
+  }
+
+  /* ---------- 音符生成：按模式分支 ---------- */
+  let lastStage = 1;
+  const MIN_GAP = () => noteR * 5.0;
+  function spawnNote(hitAt) {
+    if (GAME_MODE === 'ring') {
+      let ring; do { ring = Math.floor(Math.random() * 4); } while (ring === lastRing);
+      lastRing = ring;
+      const stage = lastStage === 0 ? 1 : 0;
+      lastStage = stage;
+      const scx = stage === 0 ? cx1 : cx2;
+      let angle = 0, pos = null, tries = 0;
+      do {
+        angle = Math.random() * Math.PI * 2;
+        if (Math.abs(angle - lastAngle) < 0.7) angle += 1.3;
+        pos = { x: scx + Math.cos(angle) * ringR[ring], y: cy + Math.sin(angle) * ringR[ring] };
+        tries++;
+      } while (tries < 14 && notes.some(n => {
+        if (n.judged || n.stage !== stage) return false;
+        const np = notePos(n);
+        return Math.hypot(pos.x - np.x, pos.y - np.y) < MIN_GAP();
+      }));
+      lastAngle = angle;
+      notes.push({ mode: 'ring', stage, ring, angle, hitAt, born: hitAt - LEAD_IN, judged: false,
+        shape: SHAPES[Math.floor(Math.random() * SHAPES.length)], rot: Math.random() * Math.PI * 2 });
+      const cur = notes[notes.length - 1];
+      if (lastNote && lastNote.mode === 'ring') {
+        const a = notePos(lastNote), b = notePos(cur);
+        links.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, t0: performance.now() / 1000 });
+        jointFx.push({ x: b.x, y: b.y, t0: performance.now() / 1000 });
+      }
+      lastNote = cur;
+    } else if (GAME_MODE === 'fall') {
+      const lane = Math.floor(Math.random() * 4);
+      notes.push({ mode: 'fall', lane, hitAt, born: hitAt - LEAD_IN, judged: false });
+    } else if (GAME_MODE === 'taiko') {
+      const side = Math.random() < 0.5 ? 'L' : 'R';
+      const big = Math.random() < 0.28;
+      notes.push({ mode: 'taiko', side, big, hitAt, born: hitAt - LEAD_IN, judged: false });
+    }
+  }
+
+  function notePos(n) {
+    if (n.mode === 'ring') {
+      const cx = n.stage === 0 ? cx1 : cx2;
+      return { x: cx + Math.cos(n.angle) * ringR[n.ring], y: cy + Math.sin(n.angle) * ringR[n.ring] };
+    }
+    if (n.mode === 'fall') {
+      const laneW = W / 4;
+      const x = laneW * (n.lane + 0.5);
+      const fallLineY = H * 0.82;
+      // 下落模式：根据 hitAt 计算当前 y（从顶部 fallLineY - 320 进入，到底部 fallLineY 判定）
+      const speed = (fallLineY - (H * 0.25)) / LEAD_IN;
+      const now = actx ? actx.currentTime : 0;
+      const remain = n.hitAt - now;      // 距到拍的剩余秒数
+      const y = fallLineY - Math.max(0, remain) * speed;
+      return { x, y };
+    }
+    if (n.mode === 'taiko') {
+      return { x: n.side === 'L' ? W * 0.28 : W * 0.72, y: cy };
+    }
+    return { x: W / 2, y: cy };
+  }
+
+  /* 沿波浪线取某一点 */
+  function wavyPoint(x1, y1, x2, y2, amp, waves, phase, t) {
+    const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len, ny = dx / len;
+    const env = Math.sin(Math.PI * t);
+    const off = amp * env * Math.sin(t * Math.PI * 2 * waves + phase);
+    return { x: x1 + dx * t + nx * off, y: y1 + dy * t + ny * off };
+  }
+  /* 绘制波浪线路径 */
+  function wavyPath(x1, y1, x2, y2, amp, waves, phase) {
+    const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+    const steps = Math.max(18, Math.min(64, Math.floor(len / 12)));
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const pt = wavyPoint(x1, y1, x2, y2, amp, waves, phase, t);
+      i === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y);
+    }
+  }
+  /* 多种按钮形态（统一用中心 + 半径绘制） */
+  function drawNoteShape(shape, x, y, r, rot) {
+    ctx.beginPath();
+    const P = (a, rad) => [x + Math.cos(a + rot) * rad, y + Math.sin(a + rot) * rad];
+    if (shape === 'circle') {
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      return;
+    }
+    const poly = (n, rad, start = -Math.PI / 2) => {
+      for (let i = 0; i < n; i++) {
+        const [px, py] = P(start + i * Math.PI * 2 / n, rad);
+        i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+      }
+      ctx.closePath();
+    };
+    if (shape === 'diamond') poly(4, r * 1.28);
+    else if (shape === 'triangle') poly(3, r * 1.38);
+    else if (shape === 'hex') poly(6, r * 1.1);
+    else if (shape === 'square') poly(4, r * 1.18, Math.PI / 4);
+    else {   // star
+      for (let i = 0; i < 10; i++) {
+        const [px, py] = P(-Math.PI / 2 + i * Math.PI / 5, i % 2 ? r * 0.52 : r * 1.32);
+        i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+      }
+      ctx.closePath();
+    }
+  }
+
+  function addRipple(t) { /* 定位线已完全透明，不再记录波纹 */ }
+
+  /* ---------- 判定 ---------- */
+  function tryHit(laneIdx, px, py) {
+    if (!playing || !actx) return;
+    const now = actx.currentTime;
+    let best = null, bestDt = Infinity;
+    const laneHit = laneIdx !== null;
+    for (const n of notes) {
+      if (n.judged) continue;
+      // 模式特定的目标过滤
+      if (GAME_MODE === 'ring') {
+        if (laneIdx !== null && n.ring !== laneIdx) continue;
+      } else if (GAME_MODE === 'fall') {
+        if (laneIdx !== null && n.lane !== laneIdx) continue;
+        if (px !== null) {
+          const laneW = W / 4;
+          const hitLane = Math.min(3, Math.max(0, Math.floor(px / laneW)));
+          if (hitLane !== n.lane) continue;
+        }
+      } else if (GAME_MODE === 'taiko') {
+        if (laneIdx !== null) {
+          const hitSide = laneIdx === 0 ? 'L' : 'R';
+          if (hitSide !== n.side) continue;
+        }
+        if (px !== null) {
+          const hitSide = px < W / 2 ? 'L' : 'R';
+          if (hitSide !== n.side) continue;
+        }
+      }
+      if (GAME_MODE === 'ring' && px !== null) {
+        const p = notePos(n);
+        if (Math.hypot(px - p.x, py - p.y) > noteR * 7.0) continue;
+      }
+      const dt = Math.abs(now - n.hitAt);
+      if (dt < bestDt) { bestDt = dt; best = n; }
+    }
+    if (!best || bestDt > WIN_GOOD) return;
+    best.judged = true;
+    const perfect = bestDt <= WIN_PERFECT;
+    perfect ? (cnt.perfect++, score += 300) : (cnt.good++, score += 100);
+    combo++; maxCombo = Math.max(maxCombo, combo);
+    const p = notePos(best);
+    burst(p.x, p.y, '#4cc9f0', perfect ? 24 : 12, perfect ? 7 : 4.5);
+    if (GAME_MODE === 'ring') lightFalls.push({ x: p.x, y: p.y, stage: best.stage, t0: now });
+    iconBursts.push({ corner: iconBursts.length % 2, img: ICONS[Math.floor(Math.random() * ICONS.length)], t0: now });
+    const label = perfect ? 'PERFECT' : 'GOOD';
+    const text = GAME_MODE === 'taiko'
+      ? ((best.side === 'L' ? '咚' : '咔') + ' ' + label)
+      : label;
+    floats.push({ x: p.x, y: p.y - noteR, text, color: perfect ? '#ffd76a' : '#4cc9f0', t0: now });
+    shake(perfect ? 5 : 2.5);
+    updateHud();
+  }
+
+  function missNote(n) {
+    n.judged = true;
+    cnt.miss++; combo = 0;
+    const p = notePos(n);
+    const floatY = GAME_MODE === 'fall' ? H * 0.82 - 40 : (p.y - noteR);
+    floats.push({ x: p.x, y: floatY, text: 'MISS', color: '#8a93a8', t0: actx.currentTime });
+    updateHud();
+  }
+
+  function updateHud() {
+    scoreEl.textContent = score;
+    const total = cnt.perfect + cnt.good + cnt.miss;
+    const acc = total ? (cnt.perfect + cnt.good * 0.5) / total * 100 : 100;
+    accEl.textContent = acc.toFixed(1) + '%';
+    comboBox.classList.toggle('hidden', combo < 2);
+    comboNum.textContent = combo;
+    comboBox.classList.remove('bump'); void comboBox.offsetWidth; comboBox.classList.add('bump');
+  }
+
+  function burst(x, y, color, n, speed) {
+    for (let k = 0; k < n; k++) {
+      const a = Math.random() * Math.PI * 2, v = speed * (0.5 + Math.random());
+      particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 1, life: 1, color, size: 2 + Math.random() * 3.5 });
+    }
+  }
+
+  let shakeT = null;
+  function shake(px) {
+    stageWrap.style.transform = `translate(${(Math.random()-.5)*px*2}px,${(Math.random()-.5)*px*2}px)`;
+    clearTimeout(shakeT);
+    shakeT = setTimeout(() => stageWrap.style.transform = '', 90);
+  }
+
+  /* ---------- 绘制 ---------- */
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    const now = actx ? actx.currentTime : 0;
+
+    // 舞台氛围（按模式渲染）
+    if (GAME_MODE === 'ring') {
+      for (const cxc of [cx1, cx2]) {
+        const g0 = ctx.createRadialGradient(cxc, cy, 0, cxc, cy, maxR * 0.35);
+        g0.addColorStop(0, 'rgba(233,196,106,.14)');
+        g0.addColorStop(1, 'rgba(233,196,106,0)');
+        ctx.fillStyle = g0;
+        ctx.beginPath(); ctx.arc(cxc, cy, maxR * 0.35, 0, Math.PI * 2); ctx.fill();
+      }
+    } else if (GAME_MODE === 'fall') {
+      // 4 列竖线 + 底部判定线
+      ctx.strokeStyle = 'rgba(76,201,240,.18)'; ctx.lineWidth = 2;
+      for (let i = 1; i < 4; i++) {
+        ctx.beginPath(); ctx.moveTo(W / 4 * i, 0); ctx.lineTo(W / 4 * i, H); ctx.stroke();
+      }
+      ctx.strokeStyle = 'rgba(76,201,240,.85)'; ctx.lineWidth = 3;
+      ctx.shadowColor = '#4cc9f0'; ctx.shadowBlur = 18;
+      ctx.beginPath(); ctx.moveTo(0, H * 0.82); ctx.lineTo(W, H * 0.82); ctx.stroke();
+      ctx.shadowBlur = 0;
+    } else if (GAME_MODE === 'taiko') {
+      // 左右两个半圆大鼓 + 中间分隔
+      ctx.fillStyle = 'rgba(233,196,106,.08)';
+      ctx.beginPath(); ctx.arc(W * 0.28, cy, H * 0.22, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(W * 0.72, cy, H * 0.22, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(233,196,106,.25)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(W * 0.28, cy, H * 0.22, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(W * 0.72, cy, H * 0.22, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    // 只有 ring 模式才画音符连线
+    const tNow = performance.now() / 1000;
+    if (GAME_MODE === 'ring') {
+    for (const l of links) {
+      const p = (tNow - l.t0) / 1.6;
+      if (p > 1) { l.dead = true; continue; }
+      const len = Math.hypot(l.x2 - l.x1, l.y2 - l.y1);
+      const amp = Math.min(26, Math.max(8, len * 0.06));     // 波长温和，不夸张
+      const waves = Math.max(2, Math.round(len / 130));
+      const phase = tNow * 2.4;                              // 波浪缓慢流动
+      ctx.globalAlpha = 0.55 * (1 - p);
+      ctx.strokeStyle = '#4cc9f0';
+      ctx.lineWidth = 6 * (1 - p * 0.5);
+      ctx.lineCap = 'round';
+      ctx.shadowColor = '#4cc9f0'; ctx.shadowBlur = 12;
+      wavyPath(l.x1, l.y1, l.x2, l.y2, amp, waves, phase);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // 连接特效：一颗光点从上一颗按钮沿线游走到新按钮
+      const q = (tNow - l.t0) / 0.45;
+      if (q < 1) {
+        const pt = wavyPoint(l.x1, l.y1, l.x2, l.y2, amp, waves, phase, q);
+        ctx.globalAlpha = 1 - q * 0.6;
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = '#4cc9f0'; ctx.shadowBlur = 18;
+        ctx.beginPath(); ctx.arc(pt.x, pt.y, 5.5 * (1 - q * 0.3), 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+    }
+    links = links.filter(l => !l.dead);
+    ctx.globalAlpha = 1;
+
+    // 线到线接驳闪光（小而快，不挡视线）
+    jointFx = jointFx.filter(f => tNow - f.t0 < 0.5);
+    for (const f of jointFx) {
+      const p = (tNow - f.t0) / 0.5;
+      const r = noteR * (0.55 + p * 0.9);
+      ctx.globalAlpha = (1 - p) * 0.8;
+      ctx.strokeStyle = '#4cc9f0';
+      ctx.lineWidth = 2.5 * (1 - p * 0.6);
+      ctx.beginPath(); ctx.arc(f.x, f.y, r, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    }   // end if ring
+
+    // 光点音符：按模式分别绘制
+    for (const n of notes) {
+      if (n.judged) continue;
+      if (now < n.born) continue;
+      if (now - n.hitAt > WIN_GOOD) { missNote(n); continue; }
+      const p = notePos(n);
+      const appear = Math.min(1, (now - n.born) / 0.18);
+      const urgency = 1 - Math.max(0, Math.min(1, (n.hitAt - now) / LEAD_IN));
+      const breathe = 0.85 + 0.15 * Math.sin(now * 10 + (n.angle || n.lane || 0));
+
+      if (GAME_MODE === 'ring') {
+        const ringR2 = noteR * (1.5 + urgency * 0.8);
+        ctx.globalAlpha = appear * (0.25 + urgency * 0.4);
+        ctx.strokeStyle = '#80ed99'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(p.x, p.y, ringR2, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 1;
+        const g = ctx.createRadialGradient(p.x - noteR * .25, p.y - noteR * .25, noteR * .1, p.x, p.y, noteR);
+        g.addColorStop(0, '#ffffff'); g.addColorStop(0.35, '#80ed99'); g.addColorStop(1, '#80ed9922');
+        ctx.fillStyle = g; ctx.shadowColor = '#80ed99'; ctx.shadowBlur = 18 * breathe;
+        drawNoteShape(n.shape, p.x, p.y, noteR * 0.85 * breathe, n.rot);
+        ctx.fill(); ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+      } else if (GAME_MODE === 'fall') {
+        // 下落音符：长方形方块 + 上方小尾迹
+        const rectW = W / 4 * 0.7;
+        const rectH = 36;
+        ctx.globalAlpha = appear;
+        const g = ctx.createLinearGradient(p.x, p.y - rectH, p.x, p.y);
+        g.addColorStop(0, 'rgba(76,201,240,0)');
+        g.addColorStop(1, 'rgba(76,201,240,.95)');
+        ctx.fillStyle = g;
+        ctx.shadowColor = '#4cc9f0'; ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.roundRect(p.x - rectW / 2, p.y - rectH, rectW, rectH, 6);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(p.x, p.y - rectH * 0.45, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+      } else if (GAME_MODE === 'taiko') {
+        // 太鼓：小圆（咔）或大圆（咚），左红右蓝
+        const isLeft = n.side === 'L';
+        const color = isLeft ? '#f72585' : '#4cc9f0';
+        const r = H * (n.big ? 0.13 : 0.08);
+        const ringSize = r * (1.6 + urgency * 0.6);
+        ctx.globalAlpha = appear * (0.3 + urgency * 0.5);
+        ctx.strokeStyle = color; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(p.x, p.y, ringSize, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = appear;
+        ctx.fillStyle = color;
+        ctx.shadowColor = color; ctx.shadowBlur = 20 * breathe;
+        ctx.beginPath(); ctx.arc(p.x, p.y, r * breathe, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+      }
+    }
+    notes = notes.filter(n => !n.judged);
+
+    // 粒子
+    particles = particles.filter(p => p.life > 0);
+    for (const p of particles) {
+      p.x += p.vx; p.y += p.vy; p.vy += 0.12; p.vx *= 0.985; p.life -= 0.028;
+      ctx.globalAlpha = Math.max(p.life, 0);
+      ctx.fillStyle = p.color;
+      ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(p.size * p.life, 0.1), 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // 瀑布流光：命中后从光点流向该侧下角（左→左下，右→右下）
+    for (const f of lightFalls) {
+      const p = (now - f.t0) / 0.95;
+      if (p > 1) { f.dead = true; continue; }
+      const ex = f.stage === 0 ? -20 : W + 20;
+      const ey = H + 20;
+      const dx = ex - f.x, dy = ey - f.y;
+      const head = p;
+      const tail = Math.max(0, head - 0.28);
+      const xh = f.x + dx * head, yh = f.y + dy * head;
+      const xt = f.x + dx * tail, yt = f.y + dy * tail;
+      const grad = ctx.createLinearGradient(xt, yt, xh, yh);
+      grad.addColorStop(0, 'rgba(76,201,240,0)');
+      grad.addColorStop(1, `rgba(140,225,255,${0.95 * (1 - p * 0.6)})`);
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 11 * (1 - p * 0.5);
+      ctx.lineCap = 'round';
+      ctx.shadowColor = '#4cc9f0'; ctx.shadowBlur = 18;
+      ctx.beginPath(); ctx.moveTo(xt, yt); ctx.lineTo(xh, yh); ctx.stroke();
+      ctx.shadowBlur = 0;
+      // 头部亮点
+      ctx.beginPath(); ctx.arc(xh, yh, 7 * (1 - p * 0.5), 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,${1 - p})`;
+      ctx.fill();
+    }
+    lightFalls = lightFalls.filter(f => !f.dead);
+
+    // 点击波纹反馈（让玩家看到触屏已响应）
+    for (const r of tapRipples) {
+      const p = (tNow - r.t0) / 0.45;
+      if (p > 1) { r.dead = true; continue; }
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, noteR * (0.4 + p * 1.3), 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255,255,255,${0.5 * (1 - p)})`;
+      ctx.lineWidth = 3 * (1 - p);
+      ctx.stroke();
+    }
+    tapRipples = tapRipples.filter(r => !r.dead);
+
+    // 击中弹出的小贴纸（固定在左右上角，不遮挡视线；弹跳、淡出）
+    for (const b of iconBursts) {
+      const p = (now - b.t0) / 2.0;
+      if (p > 1) { b.dead = true; continue; }
+      const pop = p < 0.12 ? (p / 0.12) * 1.15 : 1.15 - 0.15 * Math.min(1, (p - 0.12) / 0.25);
+      const size = Math.min(W, H) * 0.10 * pop;
+      const bx = b.corner === 0 ? 70 + size / 2 : W - 70 - size / 2;
+      const by = 70 + size / 2;
+      ctx.globalAlpha = 1 - p * p;
+      if (b.img.complete && b.img.naturalWidth) {
+        ctx.save();
+        ctx.shadowColor = 'rgba(255,255,255,.45)';
+        ctx.shadowBlur = 14;
+        ctx.drawImage(b.img, bx - size / 2, by - size / 2, size, size);
+        ctx.restore();
+      } else {
+        ctx.beginPath(); ctx.arc(bx, by, size / 2, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffd76a'; ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+    iconBursts = iconBursts.filter(b => !b.dead);
+
+    // 判定浮字
+    for (const f of floats) {
+      const p = (now - f.t0) / 0.7;
+      if (p > 1) { f.dead = true; continue; }
+      ctx.globalAlpha = 1 - p;
+      ctx.fillStyle = f.color;
+      ctx.font = `800 ${f.text === 'PERFECT' ? 26 : f.text === 'GOOD' ? 21 : 14}px "Segoe UI",sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.shadowColor = f.color; ctx.shadowBlur = 14;
+      ctx.fillText(f.text, f.x, f.y - 30 * p);
+      ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+    }
+    floats = floats.filter(f => !f.dead);
+
+    updateProgress();
+    requestAnimationFrame(draw);
+  }
+
+  /* ---------- 开始 / 结束 ---------- */
+  function begin() {
+    document.getElementById('start-overlay').classList.add('hidden');
+    document.getElementById('btn-pause').classList.remove('hidden');
+    document.getElementById('prog').classList.remove('hidden');
+    playing = true;
+    // 锁定横屏（Android 端 manifest 设了 sensorLandscape；iOS 不支持，改用提示）
+    try {
+      if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock('landscape').catch(() => {});
+      }
+    } catch (e) { /* iOS Safari 不支持方向锁定 */ }
+    document.getElementById('rotate-hint').classList.toggle('on', innerHeight > innerWidth);
+  }
+  /* 底部进度条：显示剩余时间 */
+  function updateProgress() {
+    const wrap = document.getElementById('prog');
+    if (wrap.classList.contains('hidden')) return;
+    let elapsed = 0, total = 0;
+    if (audio && isFinite(audio.duration) && audio.duration > 0) {
+      elapsed = audio.currentTime; total = audio.duration;
+    } else if (synthTotal > 0 && actx) {
+      elapsed = Math.max(0, actx.currentTime - synthStart); total = synthTotal;
+    }
+    const fill = document.getElementById('prog-fill');
+    const timeEl = document.getElementById('prog-time');
+    if (!total) { fill.style.width = '100%'; timeEl.textContent = '--:--'; return; }
+    const remain = Math.max(0, total - elapsed);
+    fill.style.width = (remain / total * 100).toFixed(2) + '%';
+    const m = Math.floor(remain / 60), s = Math.floor(remain % 60);
+    timeEl.textContent = `${m}:${String(s).padStart(2, '0')}`;
+  }
+
+  function endGame() {
+    playing = false;
+    clearInterval(synthTimer); synthTimer = null;
+    if (endTimer) { clearTimeout(endTimer); endTimer = null; }
+    if (audio) audio.pause();
+    document.getElementById('btn-pause').classList.add('hidden');
+    document.getElementById('prog').classList.add('hidden');
+    notes = [];
+    const total = cnt.perfect + cnt.good + cnt.miss || 1;
+    const acc = (cnt.perfect + cnt.good * 0.5) / total * 100;
+    document.getElementById('r-score').textContent = score;
+    document.getElementById('r-combo').textContent = maxCombo;
+    document.getElementById('r-acc').textContent = acc.toFixed(1) + '%';
+    document.getElementById('r-perfect').textContent = cnt.perfect;
+    document.getElementById('r-good').textContent = cnt.good;
+    document.getElementById('r-miss').textContent = cnt.miss;
+    document.getElementById('rank').textContent = acc >= 95 ? 'S' : acc >= 88 ? 'A' : acc >= 75 ? 'B' : 'C';
+    document.getElementById('end-overlay').classList.remove('hidden');
+  }
+
+  /* ---------- 暂停 / 恢复 / 退出 ---------- */
+  function pauseGame() {
+    if (!playing) return;
+    playing = false;
+    if (audio) audio.pause();
+    if (synthTimer) { clearInterval(synthTimer); synthTimer = null; }
+    if (endTimer) { clearTimeout(endTimer); endTimer = null; }
+    if (actx) actx.suspend();
+    document.getElementById('pause-overlay').classList.remove('hidden');
+  }
+  function resumeGame() {
+    document.getElementById('pause-overlay').classList.add('hidden');
+    actx.resume().then(() => {
+      if (audio) safePlay(audio);
+      if (currentTrack) runSynthLoop();
+      playing = true;
+    });
+  }
+  function exitToMenu() {
+    if (audio) { audio.pause(); audio.currentTime = 0; }
+    if (synthTimer) { clearInterval(synthTimer); synthTimer = null; }
+    if (endTimer) { clearTimeout(endTimer); endTimer = null; }
+    if (actx) actx.suspend();
+    currentTrack = null;
+    reset();
+    document.getElementById('pause-overlay').classList.add('hidden');
+    document.getElementById('end-overlay').classList.add('hidden');
+    document.getElementById('btn-pause').classList.add('hidden');
+    document.getElementById('start-overlay').classList.remove('hidden');
+  }
+  function reset() {
+    score = 0; combo = 0; maxCombo = 0; lastBeatT = 0; baseline = [];
+    cnt = { perfect: 0, good: 0, miss: 0 };
+    notes = []; particles = []; ripples = []; floats = []; iconBursts = []; tapRipples = []; links = []; lightFalls = []; jointFx = [];
+    document.getElementById('prog').classList.add('hidden');
+    lastNote = null;
+    updateHud();
+  }
+
+  /* ---------- 事件 ---------- */
+  document.getElementById('btn-music').onclick = () => document.getElementById('file-input').click();
+  document.getElementById('file-input').onchange = e => {
+    const f = e.target.files[0]; if (!f) return;
+    document.getElementById('song-name').textContent = '♪ ' + f.name;
+    reset(); startWithFile(f);
+  };
+  document.getElementById('btn-track1').onclick = () => { reset(); startTrack(TRACKS[0]); };
+  document.getElementById('btn-track2').onclick = () => { reset(); startTrack(TRACKS[1]); };
+  document.getElementById('btn-song1').onclick = () => { reset(); startWithURL('assets/music/FasterDoesIt.mp3', 'Faster Does It — Kevin MacLeod'); };
+  document.getElementById('btn-song2').onclick = () => { reset(); startWithURL('assets/music/PixelPeekerPolka.mp3', 'Pixel Peeker Polka — Kevin MacLeod'); };
+  document.getElementById('btn-song3').onclick = () => { reset(); startWithURL('assets/music/MonkeysSpinningMonkeys.mp3', 'Monkeys Spinning Monkeys — Kevin MacLeod'); };
+  document.getElementById('btn-us1').onclick = () => { reset(); startWithURL('assets/music/us1.mp3', '最后的旅行 — 绘梨衣'); };
+  document.getElementById('btn-us2').onclick = () => { reset(); startWithURL('assets/music/us2.mp3', '最后的旅行（纯歌版）— Rainton桐'); };
+  document.getElementById('btn-us3').onclick = () => { reset(); startWithURL('assets/music/us3.mp3', '天気の子 — STRlighT'); };
+  document.getElementById('btn-url').onclick = async () => {
+    const url = document.getElementById('url-input').value.trim();
+    if (!url) return;
+    const nameEl = document.getElementById('song-name');
+    const isQishui = /qishui\.douyin\.com|music\.douyin\.com/.test(url);
+
+    if (isQishui) {
+      nameEl.textContent = '正在解析汽水音乐链接…';
+      try {
+        const Http = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Http;
+        if (!Http) throw new Error('HTTP 插件未加载');
+        const resp = await Http.get({ url, followRedirects: true, responseType: 'text' });
+        const finalUrl = resp.url || url;
+        let id = '';
+        let m = finalUrl.match(/(?:track_id|media_id)=(\d+)/);
+        if (m) id = m[1];
+        else { m = (resp.data || '').toString().match(/(?:track_id|media_id)=(\d+)/); if (m) id = m[1]; }
+        if (!id) throw new Error('未从链接中提取到歌曲ID');
+        await playQishuiTrack(id);
+      } catch (e) {
+        nameEl.textContent = '❌ 解析失败：' + (e.message || e);
+      }
+      return;
+    }
+
+    // 普通音频直链
+    nameEl.textContent = '正在拉取链接音频…';
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const type = resp.headers.get('content-type') || '';
+      const blob = await resp.blob();
+      if (!type.startsWith('audio/') || blob.size < 100000) throw new Error('非音频直链');
+      reset();
+      startWithURL(URL.createObjectURL(blob), '链接音乐');
+    } catch (e) {
+      nameEl.innerHTML = '❌ 无法播放：请粘贴 mp3/flac/ogg 直链，或汽水音乐分享链接。';
+    }
+  };
+  document.getElementById('btn-again').onclick = () => location.reload();
+  document.getElementById('btn-pause').onclick = pauseGame;
+  document.getElementById('btn-resume').onclick = resumeGame;
+  document.getElementById('btn-exit').onclick = exitToMenu;
+
+  // 速度/难度滑块
+  const speedSlider = document.getElementById('speed-slider');
+  const speedVal = document.getElementById('speed-val');
+  speedSlider.oninput = () => {
+    SPEED = parseFloat(speedSlider.value);
+    speedVal.textContent = SPEED.toFixed(1) + '×';
+  };
+  applyDifficulty();
+
+  // 触屏/鼠标点击：坐标用 getBoundingClientRect 校准，避免 WebView 偏移
+  function getCanvasXY(e) {
+    const r = cv.getBoundingClientRect();
+    const x = (e.clientX - r.left) * (W / r.width);
+    const y = (e.clientY - r.top) * (H / r.height);
+    return { x, y };
+  }
+  let _lastTap = 0;
+  function onTap(e) {
+    e.preventDefault();
+    const now = performance.now();
+    if (now - _lastTap < 30) return;   // 去重：触屏会同时触发 pointerdown + touchstart
+    _lastTap = now;
+    const { x, y } = getCanvasXY(e);
+    tapRipples.push({ x, y, t0: now / 1000 });
+    tryHit(null, x, y);
+  }
+  cv.addEventListener('pointerdown', onTap);
+  cv.addEventListener('touchstart', onTap, { passive: false });
+
+  /* 模式选择：DOM 状态 */
+  document.querySelectorAll('.mode-card').forEach(card => {
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+      GAME_MODE = card.dataset.mode;
+      // 切换模式时清空音符（但不影响已选歌曲和进度条）
+      notes = [];
+    });
+  });
+
+  /* 键盘：按不同模式映射按键 */
+  addEventListener('keydown', e => {
+    if (e.repeat) return;
+    const k = e.key.toLowerCase();
+    let laneIdx = null;
+    if (GAME_MODE === 'ring') {
+      laneIdx = { d: 0, f: 1, j: 2, k: 3 }[k];
+    } else if (GAME_MODE === 'fall') {
+      laneIdx = { d: 0, f: 1, j: 2, k: 3 }[k];
+    } else if (GAME_MODE === 'taiko') {
+      laneIdx = k === 'd' ? 0 : (k === 'j' ? 1 : null);
+    }
+    if (laneIdx !== null) tryHit(laneIdx, null, null);
+  });
+
+  // 主循环：节拍检测 + 绘制
+  (function tick() {
+    if (playing && audio && !audio.paused) beatDetect();
+    requestAnimationFrame(tick);
+  })();
+  draw();
+})();
+</script>
+</body>
+</html>
