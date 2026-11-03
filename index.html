@@ -73,7 +73,11 @@
       color:#bfe9ff; font-size:15px; font-weight:600; transition:.22s; text-align:center;
       display:flex; flex-direction:column; align-items:center; gap:6px; line-height:1.2;
       box-shadow:inset 0 1px 0 rgba(255,255,255,.10), 0 4px 14px rgba(3,14,28,.35); }
-  .mode-card .icon { font-size:28px; line-height:1; filter:drop-shadow(0 0 10px rgba(102,204,255,.55)); }
+  .mode-card .icon { width:54px; height:54px; object-fit:contain; display:block;
+      filter:drop-shadow(0 4px 10px rgba(102,204,255,.45));
+      transition:transform .25s, filter .25s; }
+  .mode-card:hover .icon, .mode-card.active .icon {
+      transform:translateY(-2px) scale(1.06); filter:drop-shadow(0 6px 16px rgba(102,204,255,.75)); }
   .mode-card .desc { font-size:11px; opacity:.55; font-weight:400; letter-spacing:.02em; }
   .mode-card:hover { border-color:rgba(102,204,255,.7); background:var(--ty-glass); transform:translateY(-2px);
       box-shadow:0 0 24px rgba(102,204,255,.30), inset 0 1px 0 rgba(255,255,255,.18); }
@@ -158,10 +162,10 @@
   <div class="ty-badge">洛天依 · 66CCFF</div>
   <p class="sub">选一种玩法开始：</p>
   <div id="mode-row">
-    <div class="mode-card active" data-mode="ring"><div class="icon">🎯</div>同心圆环<div class="desc">光点在左右舞台交替出现</div></div>
-    <div class="mode-card" data-mode="fall"><div class="icon">⬇️</div>下落按键<div class="desc">4 列音符从顶部滚到底</div></div>
-    <div class="mode-card" data-mode="taiko"><div class="icon">🥁</div>太鼓对拍<div class="desc">只分左右，咚 / 咔</div></div>
-    <div class="mode-card" data-mode="phi"><div class="icon">🎼</div>Phigros 判定线<div class="desc">十种玩法轮转 · 判定线逐段变形</div></div>
+    <div class="mode-card active" data-mode="ring"><img class="icon" src="assets/icons/ty_ring.png" alt="">同心圆环<div class="desc">光点在左右舞台交替出现</div></div>
+    <div class="mode-card" data-mode="fall"><img class="icon" src="assets/icons/ty_fall.png" alt="">下落按键<div class="desc">4 列音符从顶部滚到底</div></div>
+    <div class="mode-card" data-mode="taiko"><img class="icon" src="assets/icons/ty_taiko.png" alt="">太鼓对拍<div class="desc">只分左右，咚 / 咔</div></div>
+    <div class="mode-card" data-mode="phi"><img class="icon" src="assets/icons/ty_phi.png" alt="">Phigros 判定线<div class="desc">十种玩法轮转 · 判定线逐段变形</div></div>
   </div>
   <p class="sub" style="font-size:12px;opacity:.55">⚠️ 网易云 VIP 的 .ncm 加密格式浏览器无法播放，请用 mp3/flac/wav。</p>
   <div id="song-name"></div>
