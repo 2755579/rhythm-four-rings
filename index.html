@@ -121,7 +121,7 @@
     <div class="mode-card active" data-mode="ring"><div class="icon">🎯</div>同心圆环<div class="desc">光点在左右舞台交替出现</div></div>
     <div class="mode-card" data-mode="fall"><div class="icon">⬇️</div>下落按键<div class="desc">4 列音符从顶部滚到底</div></div>
     <div class="mode-card" data-mode="taiko"><div class="icon">🥁</div>太鼓对拍<div class="desc">只分左右，咚 / 咔</div></div>
-    <div class="mode-card" data-mode="phi"><div class="icon">🎼</div>Phigros 判定线<div class="desc">判定线会移动 · 点 / 滑 / 长按</div></div>
+    <div class="mode-card" data-mode="phi"><div class="icon">🎼</div>Phigros 判定线<div class="desc">四章连打 · 判定线逐章变形</div></div>
   </div>
   <p class="sub" style="font-size:12px;opacity:.55">⚠️ 网易云 VIP 的 .ncm 加密格式浏览器无法播放，请用 mp3/flac/wav。</p>
   <div id="song-name"></div>
@@ -225,7 +225,7 @@
   });
 
   let actx, analyser, freqData, audio, playing = false;
-  let notes = [], particles = [], ripples = [], floats = [], tapRipples = [], links = [], lightFalls = [], jointFx = [];
+  let notes = [], particles = [], ripples = [], floats = [], tapRipples = [], links = [], lightFalls = [], jointFx = [], taikoFx = [];
   const ICONS = ['assets/icons/kitty.png', 'assets/icons/bunny.png', 'assets/icons/bear.png']
     .map(s => { const im = new Image(); im.src = s; return im; });
   let iconBursts = [];   // 击中后弹出的可爱小贴纸
@@ -485,7 +485,12 @@
       return { x, y };
     }
     if (n.mode === 'taiko') {
-      return { x: n.side === 'L' ? W * 0.28 : W * 0.72, y: cy };
+      // 音符从屏幕外侧滚入鼓面，到拍那一刻正好落在鼓心
+      const drumX = n.side === 'L' ? W * 0.25 : W * 0.75;
+      const fromX = n.side === 'L' ? -W * 0.08 : W * 1.08;
+      const now = actx ? actx.currentTime : 0;
+      const t = Math.min(1, Math.max(0, 1 - (n.hitAt - now) / LEAD_IN));
+      return { x: fromX + (drumX - fromX) * t, y: cy };
     }
     if (n.mode === 'phi') {
       const p = phiNoteXY(n, actx ? actx.currentTime : 0);
@@ -498,19 +503,21 @@
      参考 GitHub: lchzh3473/sim-phi (MIT License) 的判定线事件模型：
      判定线拥有「位移 / 旋转 / 透明度 / 流速」四类事件，音符挂在判定线上、
      沿线的法线方向接近判定线；音符分 Tap / Drag / Hold / Flick 四类。 */
-  const PHI_POSES = [
-    { x: 0.50, y: 0.74, rot: 0 },
-    { x: 0.50, y: 0.62, rot: 0 },
-    { x: 0.34, y: 0.66, rot: -16 },
-    { x: 0.66, y: 0.66, rot: 16 },
-    { x: 0.50, y: 0.46, rot: 0 },
-    { x: 0.50, y: 0.58, rot: 90 },
-    { x: 0.46, y: 0.72, rot: -24 },
-    { x: 0.54, y: 0.72, rot: 24 },
-    { x: 0.50, y: 0.74, rot: 0 }
+  /* 四个章节：每章换一套判定线姿态与键型，形成"玩法一段接一段"的推进感 */
+  const PHI_CHAPTERS = [
+    { name: '第一章 · 单点', tag: 'TAP', dur: 16, color: '#4cc9f0',
+      poses: [{ x: 0.50, y: 0.74, rot: 0 }, { x: 0.50, y: 0.64, rot: 0 }, { x: 0.38, y: 0.68, rot: -12 }] },
+    { name: '第二章 · 滑条', tag: 'DRAG', dur: 16, color: '#ffd76a',
+      poses: [{ x: 0.50, y: 0.66, rot: 0 }, { x: 0.50, y: 0.66, rot: 20 }, { x: 0.50, y: 0.58, rot: -20 }] },
+    { name: '第三章 · 长按', tag: 'HOLD', dur: 16, color: '#80ed99',
+      poses: [{ x: 0.50, y: 0.70, rot: 0 }, { x: 0.50, y: 0.45, rot: 0 }, { x: 0.50, y: 0.58, rot: 90 }] },
+    { name: '第四章 · 综合', tag: 'ALL', dur: 20, color: '#f72585',
+      poses: [{ x: 0.50, y: 0.74, rot: 0 }, { x: 0.34, y: 0.64, rot: -24 }, { x: 0.66, y: 0.64, rot: 24 }, { x: 0.50, y: 0.54, rot: 90 }] }
   ];
   const PHI_SEG = 4.4;              // 每段判定线姿态时长（秒）
   let phiStart = 0;                 // 本局开始时刻
+  let phiStage = -1;                // 当前章节
+  let phiBanner = null;             // 过章横幅
   let phiFlashes = [];              // 命中闪光
   const pointers = new Map();       // pointerId -> {x,y,px,py,t}
 
@@ -519,19 +526,40 @@
   const phiHitR = () => Math.max(68, Math.min(W, H) * 0.13);
   const phiNoteSpeed = () => Math.min(W, H) * 0.6 / Math.max(0.15, LEAD_IN);
 
-  /* 判定线姿态：在预设姿态间缓动过渡，形成"线在动"的观感 */
-  function phiLine() {
+  /* 当前章节：四章按各自的 dur 顺序推进，播完循环 */
+  function phiStageNow() {
     const t = Math.max(0, (actx ? actx.currentTime : 0) - phiStart);
-    const i = Math.floor(t / PHI_SEG);
+    const total = PHI_CHAPTERS.reduce((a, c) => a + c.dur, 0);
+    let x = t % total, acc = 0;
+    for (let i = 0; i < PHI_CHAPTERS.length; i++) {
+      acc += PHI_CHAPTERS[i].dur;
+      if (x < acc) return i;
+    }
+    return PHI_CHAPTERS.length - 1;
+  }
+
+  /* 判定线姿态：章内按段缓动，换章时整条线换一套形态 */
+  function phiLine() {
+    const idx = phiStageNow();
+    if (idx !== phiStage) {
+      phiStage = idx;
+      const ch = PHI_CHAPTERS[idx];
+      phiBanner = { text: ch.name, tag: ch.tag, color: ch.color, t0: actx ? actx.currentTime : 0 };
+      phiFlashes.push({ x: W / 2, y: H / 2, t0: actx ? actx.currentTime : 0 });
+    }
+    const ch = PHI_CHAPTERS[idx];
+    const t = Math.max(0, (actx ? actx.currentTime : 0) - phiStart);
+    const seg = Math.floor(t / PHI_SEG);
     const u = (t % PHI_SEG) / PHI_SEG;
-    const a = PHI_POSES[i % PHI_POSES.length];
-    const b = PHI_POSES[(i + 1) % PHI_POSES.length];
+    const a = ch.poses[seg % ch.poses.length];
+    const b = ch.poses[(seg + 1) % ch.poses.length];
     const e = phiEase(Math.min(1, u * 1.3));
     return {
       x: W * (a.x + (b.x - a.x) * e),
       y: H * (a.y + (b.y - a.y) * e),
       rot: (a.rot + (b.rot - a.rot) * e) * Math.PI / 180,
-      half: Math.min(W * 0.42, H * 0.6)
+      half: Math.min(W * 0.42, H * 0.6),
+      color: ch.color
     };
   }
 
@@ -549,23 +577,32 @@
       judged: false, scored: false, holding: false, ptr: null };
   }
 
-  /* 生成 Phigros 风格的组合键型 */
+  /* 按章节生成键型：单点 → 滑条 → 长按 → 综合 */
   function spawnPhi(hitAt) {
+    const ch = phiStageNow();
     const nx = () => Math.random() * 1.5 - 0.75;
-    const r = Math.random();
-    if (r < 0.40) {
-      notes.push(phiNote('tap', nx(), hitAt));
-    } else if (r < 0.60) {                       // 双押
-      const a = nx();
-      notes.push(phiNote('tap', a, hitAt));
-      notes.push(phiNote('tap', Math.max(-0.8, Math.min(0.8, a > 0 ? a - 0.5 : a + 0.5)), hitAt));
-    } else if (r < 0.76) {                       // 滑条（指尖划过即可）
+    const tap = () => notes.push(phiNote('tap', nx(), hitAt));
+    const dragChain = cnt => {
       const dir = Math.random() < 0.5 ? 1 : -1;
-      for (let i = 0; i < 3; i++) notes.push(phiNote('drag', dir * (-0.55 + i * 0.45), hitAt + i * 0.06));
-    } else if (r < 0.90) {                       // 长按
-      notes.push(phiNote('hold', nx(), hitAt, 0.45 + Math.random() * 0.6));
-    } else {                                     // 滑动（Flick）
-      notes.push(phiNote('flick', nx(), hitAt));
+      const start = dir > 0 ? -0.6 : 0.6;
+      for (let i = 0; i < cnt; i++) notes.push(phiNote('drag', start + dir * i * 0.4, hitAt + i * 0.055));
+    };
+    if (ch === 0) {
+      tap();
+      if (Math.random() < 0.3) notes.push(phiNote('tap', nx(), hitAt));          // 双押
+    } else if (ch === 1) {
+      dragChain(3 + (Math.random() < 0.4 ? 1 : 0));
+      if (Math.random() < 0.3) tap();
+    } else if (ch === 2) {
+      notes.push(phiNote('hold', nx(), hitAt, 0.6 + Math.random() * 0.8));
+      if (Math.random() < 0.4) tap();
+    } else {
+      const r = Math.random();
+      if (r < 0.30) { tap(); tap(); }
+      else if (r < 0.52) dragChain(4);
+      else if (r < 0.72) { notes.push(phiNote('hold', nx(), hitAt, 0.5 + Math.random() * 0.7)); tap(); }
+      else if (r < 0.88) { notes.push(phiNote('flick', nx(), hitAt)); tap(); }
+      else { notes.push(phiNote('flick', nx(), hitAt)); tap(); notes.push(phiNote('tap', nx(), hitAt)); }
     }
   }
 
@@ -676,6 +713,7 @@
 
   function drawPhi(now) {
     const L = phiLine();
+    const col = L.color || '#4cc9f0';
     const v = phiNoteSpeed();
     const r = phiNoteR();
 
@@ -683,21 +721,21 @@
     ctx.save();
     ctx.translate(L.x, L.y); ctx.rotate(L.rot);
     const bg = ctx.createLinearGradient(0, -H * 0.34, 0, 0);
-    bg.addColorStop(0, 'rgba(76,201,240,0)');
-    bg.addColorStop(1, 'rgba(76,201,240,.10)');
+    bg.addColorStop(0, col + '00');
+    bg.addColorStop(1, col + '1a');
     ctx.fillStyle = bg;
     ctx.fillRect(-L.half, -H * 0.34, L.half * 2, H * 0.34);
 
     // 判定线本体（外发光 + 白色内核 + 端点）
     const lg = ctx.createLinearGradient(-L.half, 0, L.half, 0);
-    lg.addColorStop(0, 'rgba(76,201,240,0)');
-    lg.addColorStop(0.15, 'rgba(120,220,255,.5)');
+    lg.addColorStop(0, col + '00');
+    lg.addColorStop(0.15, col + '88');
     lg.addColorStop(0.5, 'rgba(255,255,255,.96)');
-    lg.addColorStop(0.85, 'rgba(120,220,255,.5)');
-    lg.addColorStop(1, 'rgba(76,201,240,0)');
+    lg.addColorStop(0.85, col + '88');
+    lg.addColorStop(1, col + '00');
     ctx.lineCap = 'round';
     ctx.strokeStyle = lg; ctx.lineWidth = 7;
-    ctx.shadowColor = '#4cc9f0'; ctx.shadowBlur = 26;
+    ctx.shadowColor = col; ctx.shadowBlur = 26;
     ctx.beginPath(); ctx.moveTo(-L.half, 0); ctx.lineTo(L.half, 0); ctx.stroke();
     ctx.shadowBlur = 16;
     ctx.fillStyle = '#eaffff';
@@ -760,11 +798,29 @@
       const p = (now - f.t0) / 0.45;
       ctx.globalAlpha = (1 - p) * 0.85;
       ctx.strokeStyle = '#aef7ff'; ctx.lineWidth = 3 * (1 - p);
-      ctx.shadowColor = '#4cc9f0'; ctx.shadowBlur = 18;
+      ctx.shadowColor = col; ctx.shadowBlur = 18;
       ctx.beginPath(); ctx.arc(f.x, f.y, r * (0.6 + p * 2.2), 0, Math.PI * 2); ctx.stroke();
       ctx.shadowBlur = 0;
     }
     ctx.globalAlpha = 1;
+
+    // 过章横幅：玩法换段时提示
+    if (phiBanner) {
+      const p = (now - phiBanner.t0) / 2.4;
+      if (p >= 1) phiBanner = null;
+      else {
+        const a = p < 0.15 ? p / 0.15 : 1 - Math.max(0, (p - 0.55) / 0.45);
+        ctx.globalAlpha = Math.max(0, a);
+        ctx.textAlign = 'center';
+        ctx.fillStyle = phiBanner.color;
+        ctx.shadowColor = phiBanner.color; ctx.shadowBlur = 24;
+        ctx.font = '800 ' + Math.round(Math.min(W, H) * 0.072) + 'px "Segoe UI",sans-serif';
+        ctx.fillText(phiBanner.text, W / 2, H * 0.2);
+        ctx.font = '600 ' + Math.round(Math.min(W, H) * 0.03) + 'px "Segoe UI",sans-serif';
+        ctx.fillText(phiBanner.tag, W / 2, H * 0.2 + Math.min(W, H) * 0.06);
+        ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+      }
+    }
   }
 
   /* 沿波浪线取某一点 */
@@ -858,8 +914,15 @@
     perfect ? (cnt.perfect++, score += 300) : (cnt.good++, score += 100);
     combo++; maxCombo = Math.max(maxCombo, combo);
     const p = notePos(best);
-    burst(p.x, p.y, '#4cc9f0', perfect ? 24 : 12, perfect ? 7 : 4.5);
+    const hitCol = GAME_MODE === 'taiko'
+      ? (best.side === 'L' ? '#f72585' : '#4cc9f0')
+      : '#4cc9f0';
+    burst(p.x, p.y, hitCol, perfect ? 24 : 12, perfect ? 7 : 4.5);
     if (GAME_MODE === 'ring') lightFalls.push({ x: p.x, y: p.y, stage: best.stage, t0: now });
+    if (GAME_MODE === 'taiko') {                       // 鼓面脉冲 + 鼓点音效
+      taikoFx.push({ side: best.side, t0: now });
+      best.side === 'L' ? scheduleKick(now + 0.02) : scheduleHat(now + 0.02);
+    }
     iconBursts.push({ corner: iconBursts.length % 2, img: ICONS[Math.floor(Math.random() * ICONS.length)], t0: now });
     const label = perfect ? 'PERFECT' : 'GOOD';
     const text = GAME_MODE === 'taiko'
@@ -928,13 +991,43 @@
       ctx.beginPath(); ctx.moveTo(0, H * 0.82); ctx.lineTo(W, H * 0.82); ctx.stroke();
       ctx.shadowBlur = 0;
     } else if (GAME_MODE === 'taiko') {
-      // 左右两个半圆大鼓 + 中间分隔
-      ctx.fillStyle = 'rgba(233,196,106,.08)';
-      ctx.beginPath(); ctx.arc(W * 0.28, cy, H * 0.22, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(W * 0.72, cy, H * 0.22, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = 'rgba(233,196,106,.25)'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(W * 0.28, cy, H * 0.22, 0, Math.PI * 2); ctx.stroke();
-      ctx.beginPath(); ctx.arc(W * 0.72, cy, H * 0.22, 0, Math.PI * 2); ctx.stroke();
+      // 判定轨道 + 左右鼓面（红=咚，蓝=咔）
+      const drumR = Math.min(H * 0.17, W * 0.11);
+      const drums = [
+        { x: W * 0.25, color: '#f72585', label: '咚' },
+        { x: W * 0.75, color: '#4cc9f0', label: '咔' }
+      ];
+      ctx.strokeStyle = 'rgba(233,196,106,.16)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(W, cy); ctx.stroke();
+      for (const d of drums) {
+        const g0 = ctx.createRadialGradient(d.x, cy, drumR * 0.2, d.x, cy, drumR * 1.6);
+        g0.addColorStop(0, d.color + '33');
+        g0.addColorStop(1, d.color + '00');
+        ctx.fillStyle = g0;
+        ctx.beginPath(); ctx.arc(d.x, cy, drumR * 1.6, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = d.color + 'aa'; ctx.lineWidth = 3;
+        ctx.shadowColor = d.color; ctx.shadowBlur = 14;
+        ctx.beginPath(); ctx.arc(d.x, cy, drumR, 0, Math.PI * 2); ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = d.color;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = '800 ' + Math.round(drumR * 0.72) + 'px "Microsoft YaHei",sans-serif';
+        ctx.fillText(d.label, d.x, cy);
+        ctx.globalAlpha = 1;
+        ctx.textBaseline = 'alphabetic';
+      }
+      // 击中鼓面的脉冲
+      taikoFx = taikoFx.filter(f => now - f.t0 < 0.4);
+      for (const f of taikoFx) {
+        const p = (now - f.t0) / 0.4;
+        const dx = f.side === 'L' ? W * 0.25 : W * 0.75;
+        ctx.globalAlpha = (1 - p) * 0.9;
+        ctx.strokeStyle = f.side === 'L' ? '#f72585' : '#4cc9f0';
+        ctx.lineWidth = 4 * (1 - p);
+        ctx.beginPath(); ctx.arc(dx, cy, drumR * (1 + p * 0.7), 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
     } else if (GAME_MODE === 'phi') {
       if (playing) { phiUpdate(now); drawPhi(now); }
     }
@@ -1024,19 +1117,31 @@
         ctx.beginPath(); ctx.arc(p.x, p.y - rectH * 0.45, 4, 0, Math.PI * 2); ctx.fill();
         ctx.shadowBlur = 0; ctx.globalAlpha = 1;
       } else if (GAME_MODE === 'taiko') {
-        // 太鼓：小圆（咔）或大圆（咚），左红右蓝
+        // 太鼓：音符从外侧滚向鼓面，红=咚 / 蓝=咔
         const isLeft = n.side === 'L';
         const color = isLeft ? '#f72585' : '#4cc9f0';
-        const r = H * (n.big ? 0.13 : 0.08);
-        const ringSize = r * (1.6 + urgency * 0.6);
+        const r = H * (n.big ? 0.105 : 0.072);
+        ctx.globalAlpha = appear * 0.8;
+        const tg = ctx.createLinearGradient(p.x + (isLeft ? -r * 3 : r * 3), p.y, p.x, p.y);
+        tg.addColorStop(0, color + '00');
+        tg.addColorStop(1, color + '66');
+        ctx.strokeStyle = tg; ctx.lineWidth = r * 0.7; ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(p.x + (isLeft ? -r * 3 : r * 3), p.y);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
         ctx.globalAlpha = appear * (0.3 + urgency * 0.5);
         ctx.strokeStyle = color; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(p.x, p.y, ringSize, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(p.x, p.y, r * (1.6 + urgency * 0.6), 0, Math.PI * 2); ctx.stroke();
         ctx.globalAlpha = appear;
         ctx.fillStyle = color;
         ctx.shadowColor = color; ctx.shadowBlur = 20 * breathe;
         ctx.beginPath(); ctx.arc(p.x, p.y, r * breathe, 0, Math.PI * 2); ctx.fill();
-        ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = appear * 0.9;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(p.x, p.y, r * 0.42, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
       }
     }
     notes = notes.filter(n => !n.judged);
@@ -1221,7 +1326,8 @@
     score = 0; combo = 0; maxCombo = 0; lastBeatT = 0; baseline = [];
     cnt = { perfect: 0, good: 0, miss: 0 };
     notes = []; particles = []; ripples = []; floats = []; iconBursts = []; tapRipples = []; links = []; lightFalls = []; jointFx = [];
-    phiFlashes = []; pointers.clear();
+    phiFlashes = []; pointers.clear(); taikoFx = [];
+    phiStage = -1; phiBanner = null;
     document.getElementById('prog').classList.add('hidden');
     lastNote = null;
     updateHud();
