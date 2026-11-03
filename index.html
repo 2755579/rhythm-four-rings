@@ -58,15 +58,6 @@
       color:#8ff3ec; opacity:.6; font-variant-numeric:tabular-nums;
       text-shadow:0 0 8px rgba(76,201,240,.8); }
 
-  /* Phigros 玩法提示：DOM 层，稳过画布 */
-  #phi-banner { position:fixed; left:0; right:0; top:14vh; text-align:center; z-index:6; pointer-events:none;
-      font-size:clamp(26px,7vw,54px); font-weight:800; letter-spacing:.06em; opacity:0;
-      text-shadow:0 0 22px currentColor; transition:opacity .35s; }
-  #phi-banner.on { opacity:1; }
-  #phi-stage { position:fixed; left:50%; bottom:calc(8px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%);
-      z-index:6; pointer-events:none; font-size:11px; letter-spacing:.14em; opacity:.55; white-space:nowrap;
-      text-shadow:0 0 10px currentColor; }
-
   /* 模式选择器 */
   #mode-row { display:flex; gap:12px; justify-content:center; width:min(620px,94%); flex-wrap:wrap; }
   .mode-card { cursor:pointer; padding:12px 16px; border-radius:18px; min-width:112px;
@@ -120,9 +111,6 @@
   <div id="prog-track"><div id="prog-fill"></div></div>
   <div id="prog-time">--:--</div>
 </div>
-<div id="phi-banner"></div>
-<div id="phi-stage" class="hidden"></div>
-
 <div id="stage-wrap"><canvas id="game"></canvas></div>
 
 <div class="overlay" id="start-overlay">
@@ -268,40 +256,58 @@
 
   /* 兼容 iOS 的播放：被拦截时等待下一次触摸再重试 */
   function safePlay(el) {
+    if (!el) return;
+    const kick = () => { if (actx && actx.state !== 'running') actx.resume().catch(() => {}); };
+    kick();
     const p = el.play();
     if (p && p.catch) p.catch(() => {
-      const once = () => {
-        document.removeEventListener('pointerdown', once);
-        document.removeEventListener('touchstart', once);
+      const retry = () => {
+        document.removeEventListener('pointerdown', retry);
+        document.removeEventListener('touchstart', retry);
+        kick();
         el.play().catch(() => {});
       };
-      document.addEventListener('pointerdown', once, { once: true });
-      document.addEventListener('touchstart', once, { once: true });
+      document.addEventListener('pointerdown', retry);
+      document.addEventListener('touchstart', retry);
     });
+  }
+
+  /* 统一的音频装载：挂到 DOM + 解耦解码，本地文件/直链都走这里 */
+  function mountAudio(url, name) {
+    initAudio();
+    applyDifficulty();
+    if (audio) { try { audio.pause(); audio.remove(); } catch (e) {} }
+    const el = new Audio();
+    el.preload = 'auto';
+    el.setAttribute('playsinline', '');
+    el.style.display = 'none';
+    document.body.appendChild(el);          // 挂到 DOM，部分浏览器/WebView 要求
+    el.src = url;
+    el.onended = endGame;
+    el.onerror = () => {
+      const sn = document.getElementById('song-name');
+      if (sn) sn.textContent = '❌ 这个文件无法解码，请换 mp3 / wav';
+    };
+    try { actx.createMediaElementSource(el).connect(analyser); } catch (e) { /* 连不上也能直接出声 */ }
+    audio = el;
+    document.getElementById('song-name').textContent = '♪ ' + name;
+    let started = false;
+    const go = () => {
+      if (started) return; started = true;
+      safePlay(el);
+      begin();
+    };
+    if (el.readyState >= 2) go();
+    else {
+      el.addEventListener('canplay', go, { once: true });
+      setTimeout(go, 1500);                 // 兜底：解码慢/不触发 canplay 也照样开局
+    }
   }
   function startWithFile(file) {
-    initAudio();
-    applyDifficulty();
-    audio = new Audio();
-    audio.src = URL.createObjectURL(file);
-    actx.createMediaElementSource(audio).connect(analyser);
-    audio.onended = endGame;
-    actx.resume().then(() => { safePlay(audio); begin(); });
+    startWithURL(URL.createObjectURL(file), file.name || '本地音频');
   }
   function startWithURL(url, name) {
-    initAudio();
-    applyDifficulty();
-    audio = new Audio();
-    audio.style.display = 'none';
-    document.body.appendChild(audio);      // 挂到 DOM，部分浏览器要求
-    audio.src = url;
-    actx.createMediaElementSource(audio).connect(analyser);
-    audio.onended = endGame;
-    document.getElementById('song-name').textContent = '♪ ' + name;
-    actx.resume().then(() => {
-      safePlay(audio);
-      begin();
-    });
+    mountAudio(url, name);
   }
 
   /* ---------- 音频下载：用原生 HTTP 下载为 blob，绕过跨域静音 ---------- */
@@ -542,18 +548,7 @@
   let phiStart = 0;                 // 本局开始时刻
   let phiStage = -1;                // 当前玩法
   let phiFlashes = [];              // 命中闪光
-  let phiBannerTimer = null;
   const pointers = new Map();       // pointerId -> {x,y,px,py,t}
-
-  /* 换玩法时更新 DOM 提示：大字玩法名 + 底部常驻角标 */
-  function showPhiStage(name, color) {
-    const b = document.getElementById('phi-banner');
-    const s = document.getElementById('phi-stage');
-    if (b) { b.textContent = name; b.style.color = color; b.classList.add('on'); }
-    if (s) { s.textContent = '当前玩法 · ' + name; s.style.color = color; s.classList.remove('hidden'); }
-    clearTimeout(phiBannerTimer);
-    phiBannerTimer = setTimeout(() => { if (b) b.classList.remove('on'); }, 2600);
-  }
 
   const phiEase = u => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
   const phiNoteR = () => Math.max(20, Math.min(W, H) * 0.052);
@@ -587,7 +582,6 @@
     const st = PHI_STAGES[info.i];
     if (info.i !== phiStage) {
       phiStage = info.i;
-      showPhiStage(st.name, st.color);
       phiFlashes.push({ x: W / 2, y: H / 2, t0: actx ? actx.currentTime : 0 });
     }
     const t = phiElapsed();
@@ -1381,7 +1375,7 @@
   }
   function resumeGame() {
     document.getElementById('pause-overlay').classList.add('hidden');
-    actx.resume().then(() => {
+    Promise.resolve(actx.resume()).catch(() => {}).then(() => {
       if (audio) safePlay(audio);
       if (currentTrack) runSynthLoop();
       playing = true;
@@ -1405,8 +1399,6 @@
     notes = []; particles = []; ripples = []; floats = []; iconBursts = []; tapRipples = []; links = []; lightFalls = []; jointFx = [];
     phiFlashes = []; pointers.clear(); taikoFx = [];
     phiStage = -1;
-    document.getElementById('phi-banner').classList.remove('on');
-    document.getElementById('phi-stage').classList.add('hidden');
     document.getElementById('prog').classList.add('hidden');
     lastNote = null;
     updateHud();
