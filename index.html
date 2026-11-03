@@ -58,6 +58,15 @@
       color:#8ff3ec; opacity:.6; font-variant-numeric:tabular-nums;
       text-shadow:0 0 8px rgba(76,201,240,.8); }
 
+  /* Phigros 玩法提示：DOM 层，稳过画布 */
+  #phi-banner { position:fixed; left:0; right:0; top:14vh; text-align:center; z-index:6; pointer-events:none;
+      font-size:clamp(26px,7vw,54px); font-weight:800; letter-spacing:.06em; opacity:0;
+      text-shadow:0 0 22px currentColor; transition:opacity .35s; }
+  #phi-banner.on { opacity:1; }
+  #phi-stage { position:fixed; left:50%; bottom:calc(8px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%);
+      z-index:6; pointer-events:none; font-size:11px; letter-spacing:.14em; opacity:.55; white-space:nowrap;
+      text-shadow:0 0 10px currentColor; }
+
   /* 模式选择器 */
   #mode-row { display:flex; gap:12px; justify-content:center; width:min(620px,94%); flex-wrap:wrap; }
   .mode-card { cursor:pointer; padding:12px 16px; border-radius:18px; min-width:112px;
@@ -111,6 +120,8 @@
   <div id="prog-track"><div id="prog-fill"></div></div>
   <div id="prog-time">--:--</div>
 </div>
+<div id="phi-banner"></div>
+<div id="phi-stage" class="hidden"></div>
 
 <div id="stage-wrap"><canvas id="game"></canvas></div>
 
@@ -121,7 +132,7 @@
     <div class="mode-card active" data-mode="ring"><div class="icon">🎯</div>同心圆环<div class="desc">光点在左右舞台交替出现</div></div>
     <div class="mode-card" data-mode="fall"><div class="icon">⬇️</div>下落按键<div class="desc">4 列音符从顶部滚到底</div></div>
     <div class="mode-card" data-mode="taiko"><div class="icon">🥁</div>太鼓对拍<div class="desc">只分左右，咚 / 咔</div></div>
-    <div class="mode-card" data-mode="phi"><div class="icon">🎼</div>Phigros 判定线<div class="desc">四章连打 · 判定线逐章变形</div></div>
+    <div class="mode-card" data-mode="phi"><div class="icon">🎼</div>Phigros 判定线<div class="desc">十种玩法轮转 · 判定线逐段变形</div></div>
   </div>
   <p class="sub" style="font-size:12px;opacity:.55">⚠️ 网易云 VIP 的 .ncm 加密格式浏览器无法播放，请用 mp3/flac/wav。</p>
   <div id="song-name"></div>
@@ -501,108 +512,180 @@
 
   /* ---------- Phigros 风格：移动判定线 ----------
      参考 GitHub: lchzh3473/sim-phi (MIT License) 的判定线事件模型：
-     判定线拥有「位移 / 旋转 / 透明度 / 流速」四类事件，音符挂在判定线上、
-     沿线的法线方向接近判定线；音符分 Tap / Drag / Hold / Flick 四类。 */
-  /* 四个章节：每章换一套判定线姿态与键型，形成"玩法一段接一段"的推进感 */
-  const PHI_CHAPTERS = [
-    { name: '第一章 · 单点', tag: 'TAP', dur: 16, color: '#4cc9f0',
-      poses: [{ x: 0.50, y: 0.74, rot: 0 }, { x: 0.50, y: 0.64, rot: 0 }, { x: 0.38, y: 0.68, rot: -12 }] },
-    { name: '第二章 · 滑条', tag: 'DRAG', dur: 16, color: '#ffd76a',
-      poses: [{ x: 0.50, y: 0.66, rot: 0 }, { x: 0.50, y: 0.66, rot: 20 }, { x: 0.50, y: 0.58, rot: -20 }] },
-    { name: '第三章 · 长按', tag: 'HOLD', dur: 16, color: '#80ed99',
-      poses: [{ x: 0.50, y: 0.70, rot: 0 }, { x: 0.50, y: 0.45, rot: 0 }, { x: 0.50, y: 0.58, rot: 90 }] },
-    { name: '第四章 · 综合', tag: 'ALL', dur: 20, color: '#f72585',
-      poses: [{ x: 0.50, y: 0.74, rot: 0 }, { x: 0.34, y: 0.64, rot: -24 }, { x: 0.66, y: 0.64, rot: 24 }, { x: 0.50, y: 0.54, rot: 90 }] }
+     判定线本身缓存「位置 / 角度 / 半长 / 流速」，音符只记录
+     "线上位置 posX" 与 "法向距离"，渲染时做一次旋转+平移即可。 */
+
+  /* 十种玩法轮转（直接是玩法名，不写章节号） */
+  const PHI_STAGES = [
+    { name: '单点流', dur: 12, color: '#4cc9f0', gen: 'tap',
+      poses: [{ x: .50, y: .74, rot: 0 }, { x: .50, y: .64, rot: 0 }, { x: .38, y: .68, rot: -12 }] },
+    { name: '双押流', dur: 12, color: '#4cc9f0', gen: 'double',
+      poses: [{ x: .50, y: .70, rot: 0 }, { x: .44, y: .66, rot: -8 }, { x: .56, y: .66, rot: 8 }] },
+    { name: '滑条风暴', dur: 12, color: '#ffd76a', gen: 'drag',
+      poses: [{ x: .50, y: .66, rot: 0 }, { x: .50, y: .66, rot: 20 }, { x: .50, y: .58, rot: -20 }] },
+    { name: '长按漂移', dur: 12, color: '#80ed99', gen: 'hold',
+      poses: [{ x: .50, y: .70, rot: 0 }, { x: .50, y: .45, rot: 0 }, { x: .50, y: .58, rot: 90 }] },
+    { name: '变速流', dur: 12, color: '#4cc9f0', gen: 'stream', ramp: [0.55, 1.75],
+      poses: [{ x: .50, y: .66, rot: 0 }, { x: .50, y: .60, rot: 0 }, { x: .50, y: .66, rot: 0 }] },
+    { name: 'Flick 风暴', dur: 12, color: '#f72585', gen: 'flick',
+      poses: [{ x: .50, y: .70, rot: 0 }, { x: .36, y: .62, rot: -20 }, { x: .64, y: .62, rot: 20 }] },
+    { name: '反转判定', dur: 12, color: '#7cf2c4', gen: 'tap', flip: true,
+      poses: [{ x: .50, y: .34, rot: 0 }, { x: .50, y: .45, rot: 0 }, { x: .50, y: .36, rot: 180 }] },
+    { name: '缩短线', dur: 12, color: '#e9c46a', gen: 'dense', halfMul: 0.5,
+      poses: [{ x: .50, y: .62, rot: 0 }, { x: .50, y: .60, rot: 90 }, { x: .50, y: .64, rot: 0 }] },
+    { name: '双判定线', dur: 14, color: '#a78bfa', gen: 'mixed', dual: true,
+      poses: [{ x: .50, y: .62, rot: 0 }, { x: .50, y: .58, rot: 0 }, { x: .50, y: .64, rot: 0 }] },
+    { name: '综合乱舞', dur: 16, color: '#f72585', gen: 'mixed', dual: true,
+      poses: [{ x: .50, y: .74, rot: 0 }, { x: .34, y: .64, rot: -24 }, { x: .66, y: .64, rot: 24 }, { x: .50, y: .54, rot: 90 }] }
   ];
   const PHI_SEG = 4.4;              // 每段判定线姿态时长（秒）
   let phiStart = 0;                 // 本局开始时刻
-  let phiStage = -1;                // 当前章节
-  let phiBanner = null;             // 过章横幅
+  let phiStage = -1;                // 当前玩法
   let phiFlashes = [];              // 命中闪光
+  let phiBannerTimer = null;
   const pointers = new Map();       // pointerId -> {x,y,px,py,t}
+
+  /* 换玩法时更新 DOM 提示：大字玩法名 + 底部常驻角标 */
+  function showPhiStage(name, color) {
+    const b = document.getElementById('phi-banner');
+    const s = document.getElementById('phi-stage');
+    if (b) { b.textContent = name; b.style.color = color; b.classList.add('on'); }
+    if (s) { s.textContent = '当前玩法 · ' + name; s.style.color = color; s.classList.remove('hidden'); }
+    clearTimeout(phiBannerTimer);
+    phiBannerTimer = setTimeout(() => { if (b) b.classList.remove('on'); }, 2600);
+  }
 
   const phiEase = u => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
   const phiNoteR = () => Math.max(20, Math.min(W, H) * 0.052);
   const phiHitR = () => Math.max(68, Math.min(W, H) * 0.13);
-  const phiNoteSpeed = () => Math.min(W, H) * 0.6 / Math.max(0.15, LEAD_IN);
+  const phiElapsed = () => Math.max(0, (actx ? actx.currentTime : 0) - phiStart);
 
-  /* 当前章节：四章按各自的 dur 顺序推进，播完循环 */
-  function phiStageNow() {
-    const t = Math.max(0, (actx ? actx.currentTime : 0) - phiStart);
-    const total = PHI_CHAPTERS.reduce((a, c) => a + c.dur, 0);
+  /* 当前玩法索引 + 本玩法内的进度 0~1 */
+  function phiStageInfo() {
+    const t = phiElapsed();
+    const total = PHI_STAGES.reduce((a, c) => a + c.dur, 0);
     let x = t % total, acc = 0;
-    for (let i = 0; i < PHI_CHAPTERS.length; i++) {
-      acc += PHI_CHAPTERS[i].dur;
-      if (x < acc) return i;
+    for (let i = 0; i < PHI_STAGES.length; i++) {
+      if (x < acc + PHI_STAGES[i].dur) return { i, p: (x - acc) / PHI_STAGES[i].dur };
+      acc += PHI_STAGES[i].dur;
     }
-    return PHI_CHAPTERS.length - 1;
+    return { i: PHI_STAGES.length - 1, p: 1 };
   }
+  const phiStageNow = () => phiStageInfo().i;
 
-  /* 判定线姿态：章内按段缓动，换章时整条线换一套形态 */
+  /* 流速：普通玩法固定，变速流线性加速 */
+  function phiSpeedMul() {
+    const st = PHI_STAGES[phiStageNow()];
+    if (!st.ramp) return st.speedMul || 1;
+    return st.ramp[0] + (st.ramp[1] - st.ramp[0]) * phiStageInfo().p;
+  }
+  const phiNoteSpeed = () => Math.min(W, H) * 0.6 / Math.max(0.15, LEAD_IN) * phiSpeedMul();
+
+  /* 判定线：位置/角度/半长/流速，换玩法时整条线换形态 */
   function phiLine() {
-    const idx = phiStageNow();
-    if (idx !== phiStage) {
-      phiStage = idx;
-      const ch = PHI_CHAPTERS[idx];
-      phiBanner = { text: ch.name, tag: ch.tag, color: ch.color, t0: actx ? actx.currentTime : 0 };
+    const info = phiStageInfo();
+    const st = PHI_STAGES[info.i];
+    if (info.i !== phiStage) {
+      phiStage = info.i;
+      showPhiStage(st.name, st.color);
       phiFlashes.push({ x: W / 2, y: H / 2, t0: actx ? actx.currentTime : 0 });
     }
-    const ch = PHI_CHAPTERS[idx];
-    const t = Math.max(0, (actx ? actx.currentTime : 0) - phiStart);
-    const seg = Math.floor(t / PHI_SEG);
-    const u = (t % PHI_SEG) / PHI_SEG;
-    const a = ch.poses[seg % ch.poses.length];
-    const b = ch.poses[(seg + 1) % ch.poses.length];
+    const t = phiElapsed();
+    const segLen = st.seg || PHI_SEG;
+    const seg = Math.floor(t / segLen);
+    const u = (t % segLen) / segLen;
+    const a = st.poses[seg % st.poses.length];
+    const b = st.poses[(seg + 1) % st.poses.length];
     const e = phiEase(Math.min(1, u * 1.3));
     return {
       x: W * (a.x + (b.x - a.x) * e),
       y: H * (a.y + (b.y - a.y) * e),
       rot: (a.rot + (b.rot - a.rot) * e) * Math.PI / 180,
-      half: Math.min(W * 0.42, H * 0.6),
-      color: ch.color
+      half: Math.min(W * 0.42, H * 0.6) * (st.halfMul || 1),
+      color: st.color,
+      i: info.i
     };
   }
 
-  /* 音符屏幕坐标：ly 为负表示在判定线上方（沿法线） */
-  function phiNoteXY(n, now, L) {
-    L = L || phiLine();
-    const dist = (n.hitAt - now) * phiNoteSpeed();
-    const lx = n.posX * L.half, ly = -dist;
+  /* 双判定线玩法：第二条线挂在第一条上方，角度镜像 */
+  function phiLines() {
+    const L = phiLine();
+    const st = PHI_STAGES[L.i];
+    if (!st.dual) return [L];
+    return [L, {
+      x: L.x, y: L.y - H * 0.17, rot: -L.rot,
+      half: L.half * 0.9, color: '#a78bfa', i: L.i
+    }];
+  }
+
+  /* 音符屏幕坐标：ly 为负表示在判定线上方（沿法线）；flip 玩法从下方升上来 */
+  function phiNoteXY(n, now) {
+    const lines = phiLines();
+    const L = lines[n.line || 0] || lines[0];
+    const v = n.v || phiNoteSpeed();
+    const dist = (n.hitAt - now) * v;
+    const lx = n.posX * L.half;
+    const ly = n.flip ? dist : -dist;
     const c = Math.cos(L.rot), s = Math.sin(L.rot);
     return { x: L.x + lx * c - ly * s, y: L.y + lx * s + ly * c, dist, lx, ly };
   }
 
-  function phiNote(type, posX, hitAt, holdTime = 0) {
-    return { mode: 'phi', type, posX, hitAt, holdTime, born: hitAt - LEAD_IN,
+  function phiNote(type, posX, hitAt, holdTime = 0, line = 0) {
+    const st = PHI_STAGES[phiStageNow()];
+    return { mode: 'phi', type, posX, hitAt, holdTime,
+      v: phiNoteSpeed(), line, flip: !!st.flip, born: hitAt - LEAD_IN,
       judged: false, scored: false, holding: false, ptr: null };
   }
 
-  /* 按章节生成键型：单点 → 滑条 → 长按 → 综合 */
+  /* 按当前玩法生成键型 */
   function spawnPhi(hitAt) {
-    const ch = phiStageNow();
+    const st = PHI_STAGES[phiStageNow()];
     const nx = () => Math.random() * 1.5 - 0.75;
-    const tap = () => notes.push(phiNote('tap', nx(), hitAt));
+    const lineFor = () => (st.dual ? Math.floor(Math.random() * 2) : 0);
+    const put = (type, posX, t, hold, line) => notes.push(phiNote(type, posX, t, hold, line));
+    const tap = (t = hitAt) => put('tap', nx(), t, 0, lineFor());
     const dragChain = cnt => {
+      const line = lineFor();
       const dir = Math.random() < 0.5 ? 1 : -1;
       const start = dir > 0 ? -0.6 : 0.6;
-      for (let i = 0; i < cnt; i++) notes.push(phiNote('drag', start + dir * i * 0.4, hitAt + i * 0.055));
+      for (let i = 0; i < cnt; i++) put('drag', start + dir * i * 0.4, hitAt + i * 0.055, 0, line);
     };
-    if (ch === 0) {
-      tap();
-      if (Math.random() < 0.3) notes.push(phiNote('tap', nx(), hitAt));          // 双押
-    } else if (ch === 1) {
-      dragChain(3 + (Math.random() < 0.4 ? 1 : 0));
-      if (Math.random() < 0.3) tap();
-    } else if (ch === 2) {
-      notes.push(phiNote('hold', nx(), hitAt, 0.6 + Math.random() * 0.8));
-      if (Math.random() < 0.4) tap();
-    } else {
-      const r = Math.random();
-      if (r < 0.30) { tap(); tap(); }
-      else if (r < 0.52) dragChain(4);
-      else if (r < 0.72) { notes.push(phiNote('hold', nx(), hitAt, 0.5 + Math.random() * 0.7)); tap(); }
-      else if (r < 0.88) { notes.push(phiNote('flick', nx(), hitAt)); tap(); }
-      else { notes.push(phiNote('flick', nx(), hitAt)); tap(); notes.push(phiNote('tap', nx(), hitAt)); }
+    switch (st.gen) {
+      case 'tap':
+        tap();
+        if (Math.random() < 0.35) tap();
+        break;
+      case 'double':
+        tap(); tap();
+        if (Math.random() < 0.3) tap();
+        break;
+      case 'drag':
+        dragChain(4 + (Math.random() < 0.3 ? 1 : 0));
+        if (Math.random() < 0.25) tap();
+        break;
+      case 'hold':
+        put('hold', nx(), hitAt, 0.6 + Math.random() * 0.8, lineFor());
+        if (Math.random() < 0.4) tap();
+        break;
+      case 'flick':
+        put('flick', nx(), hitAt, 0, lineFor());
+        if (Math.random() < 0.5) put('flick', nx(), hitAt, 0, lineFor());
+        break;
+      case 'stream':
+        for (let i = 0; i < 4; i++) put('tap', -0.6 + i * 0.4, hitAt + i * 0.05, 0, lineFor());
+        break;
+      case 'dense':
+        for (let i = 0; i < 3; i++) tap(hitAt + i * 0.045);
+        if (Math.random() < 0.4) put('drag', nx(), hitAt, 0, lineFor());
+        break;
+      default:                                   // mixed / 双判定线 / 综合
+        const r = Math.random();
+        if (r < 0.24) { tap(); tap(); }
+        else if (r < 0.44) dragChain(3);
+        else if (r < 0.6) { put('hold', nx(), hitAt, 0.5 + Math.random() * 0.7, lineFor()); tap(); }
+        else if (r < 0.74) { put('flick', nx(), hitAt, 0, lineFor()); tap(); }
+        else if (r < 0.88) { tap(); put('flick', nx(), hitAt, 0, lineFor()); tap(); }
+        else { put('hold', nx(), hitAt, 0.8, lineFor()); dragChain(2); }
     }
   }
 
@@ -712,85 +795,97 @@
   }
 
   function drawPhi(now) {
-    const L = phiLine();
-    const col = L.color || '#4cc9f0';
-    const v = phiNoteSpeed();
+    const lines = phiLines();
+    const v0 = phiNoteSpeed();
     const r = phiNoteR();
 
-    // 判定线周围的光带
-    ctx.save();
-    ctx.translate(L.x, L.y); ctx.rotate(L.rot);
-    const bg = ctx.createLinearGradient(0, -H * 0.34, 0, 0);
-    bg.addColorStop(0, col + '00');
-    bg.addColorStop(1, col + '1a');
-    ctx.fillStyle = bg;
-    ctx.fillRect(-L.half, -H * 0.34, L.half * 2, H * 0.34);
+    lines.forEach((L, li) => {
+      const col = L.color || '#4cc9f0';
 
-    // 判定线本体（外发光 + 白色内核 + 端点）
-    const lg = ctx.createLinearGradient(-L.half, 0, L.half, 0);
-    lg.addColorStop(0, col + '00');
-    lg.addColorStop(0.15, col + '88');
-    lg.addColorStop(0.5, 'rgba(255,255,255,.96)');
-    lg.addColorStop(0.85, col + '88');
-    lg.addColorStop(1, col + '00');
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = lg; ctx.lineWidth = 7;
-    ctx.shadowColor = col; ctx.shadowBlur = 26;
-    ctx.beginPath(); ctx.moveTo(-L.half, 0); ctx.lineTo(L.half, 0); ctx.stroke();
-    ctx.shadowBlur = 16;
-    ctx.fillStyle = '#eaffff';
-    for (const sx of [-L.half, L.half]) { ctx.beginPath(); ctx.arc(sx, 0, 4, 0, Math.PI * 2); ctx.fill(); }
-    ctx.shadowBlur = 0;
+      // 判定线周围的光带 + 线体（外发光 + 白芯 + 端点）
+      ctx.save();
+      ctx.translate(L.x, L.y); ctx.rotate(L.rot);
+      const bg = ctx.createLinearGradient(0, -H * 0.3, 0, 0);
+      bg.addColorStop(0, col + '00');
+      bg.addColorStop(1, col + '1a');
+      ctx.fillStyle = bg;
+      ctx.fillRect(-L.half, -H * 0.3, L.half * 2, H * 0.3);
 
-    // 音符
-    for (const n of notes) {
-      if (n.mode !== 'phi' || n.judged || now < n.born) continue;
-      const headD = (n.hitAt - now) * v;
-      const lx = n.posX * L.half;
-      const lyHead = n.type === 'hold' && n.scored ? 0 : -headD;
-      const alpha = Math.min(1, (now - n.born) / 0.16);
-      const urgency = 1 - Math.max(0, Math.min(1, (n.hitAt - now) / LEAD_IN));
+      const lg = ctx.createLinearGradient(-L.half, 0, L.half, 0);
+      lg.addColorStop(0, col + '00');
+      lg.addColorStop(0.15, col + '88');
+      lg.addColorStop(0.5, 'rgba(255,255,255,.96)');
+      lg.addColorStop(0.85, col + '88');
+      lg.addColorStop(1, col + '00');
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = lg; ctx.lineWidth = 7;
+      ctx.shadowColor = col; ctx.shadowBlur = 26;
+      ctx.beginPath(); ctx.moveTo(-L.half, 0); ctx.lineTo(L.half, 0); ctx.stroke();
+      ctx.shadowBlur = 16;
+      ctx.fillStyle = '#eaffff';
+      for (const sx of [-L.half, L.half]) { ctx.beginPath(); ctx.arc(sx, 0, 4, 0, Math.PI * 2); ctx.fill(); }
+      ctx.shadowBlur = 0;
+      ctx.restore();
 
-      if (n.type === 'hold') {
-        const tailD = (n.hitAt + n.holdTime - now) * v;
-        const lyTail = -Math.max(0, tailD);
-        const hg = ctx.createLinearGradient(0, lyTail, 0, lyHead);
-        hg.addColorStop(0, 'rgba(76,201,240,0)');
-        hg.addColorStop(1, 'rgba(76,201,240,.85)');
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = hg;
-        ctx.beginPath();
-        ctx.roundRect(lx - r * 0.42, lyTail, r * 0.84, Math.max(4, lyHead - lyTail), r * 0.4);
-        ctx.fill();
-        ctx.globalAlpha = 1;
-        phiHead(lx, lyHead, r, '#4cc9f0', alpha, urgency);
-      } else if (n.type === 'drag') {
-        ctx.globalAlpha = alpha;
-        ctx.shadowColor = '#ffd76a'; ctx.shadowBlur = 16;
-        ctx.fillStyle = '#ffd76a';
-        ctx.beginPath();
-        ctx.roundRect(lx - r * 0.9, lyHead - r * 0.22, r * 1.8, r * 0.44, r * 0.22);
-        ctx.fill();
-        ctx.shadowBlur = 0; ctx.globalAlpha = 1;
-      } else if (n.type === 'flick') {
-        ctx.save();
-        ctx.globalAlpha = alpha;
-        ctx.translate(lx, lyHead);
-        ctx.strokeStyle = '#f72585'; ctx.lineWidth = 3;
-        ctx.shadowColor = '#f72585'; ctx.shadowBlur = 18;
-        ctx.beginPath();
-        ctx.moveTo(-r * 0.8, 0); ctx.lineTo(0, -r * 0.8); ctx.lineTo(r * 0.8, 0); ctx.lineTo(0, r * 0.8);
-        ctx.closePath();
-        ctx.fillStyle = 'rgba(247,37,133,.2)'; ctx.fill(); ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(-r * 0.4, -r * 1.2); ctx.lineTo(0, -r * 1.75); ctx.lineTo(r * 0.4, -r * 1.2);
-        ctx.stroke();
-        ctx.restore();
-      } else {
-        phiHead(lx, lyHead, r, '#4cc9f0', alpha, urgency);
+      // 本线挂载的音符
+      ctx.save();
+      ctx.translate(L.x, L.y); ctx.rotate(L.rot);
+      for (const n of notes) {
+        if (n.mode !== 'phi' || n.judged || now < n.born) continue;
+        if ((n.line || 0) !== li) continue;
+        const v = n.v || v0;
+        const headD = (n.hitAt - now) * v;
+        const lx = n.posX * L.half;
+        const above = !n.flip;
+        const lyHead = n.type === 'hold' && n.scored ? 0 : (above ? -headD : headD);
+        const alpha = Math.min(1, (now - n.born) / 0.16);
+        const urgency = 1 - Math.max(0, Math.min(1, (n.hitAt - now) / LEAD_IN));
+
+        if (n.type === 'hold') {
+          const tailD = (n.hitAt + n.holdTime - now) * v;
+          const lyTail = above ? -Math.max(0, tailD) : Math.max(0, tailD);
+          const top = Math.min(lyHead, lyTail);
+          const hgt = Math.max(4, Math.abs(lyHead - lyTail));
+          const hg = ctx.createLinearGradient(0, lyTail, 0, lyHead);
+          hg.addColorStop(0, 'rgba(76,201,240,0)');
+          hg.addColorStop(1, 'rgba(76,201,240,.85)');
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = hg;
+          ctx.beginPath();
+          ctx.roundRect(lx - r * 0.42, top, r * 0.84, hgt, r * 0.4);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          phiHead(lx, lyHead, r, '#4cc9f0', alpha, urgency);
+        } else if (n.type === 'drag') {
+          ctx.globalAlpha = alpha;
+          ctx.shadowColor = '#ffd76a'; ctx.shadowBlur = 16;
+          ctx.fillStyle = '#ffd76a';
+          ctx.beginPath();
+          ctx.roundRect(lx - r * 0.9, lyHead - r * 0.22, r * 1.8, r * 0.44, r * 0.22);
+          ctx.fill();
+          ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+        } else if (n.type === 'flick') {
+          const dirY = above ? -1 : 1;
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.translate(lx, lyHead);
+          ctx.strokeStyle = '#f72585'; ctx.lineWidth = 3;
+          ctx.shadowColor = '#f72585'; ctx.shadowBlur = 18;
+          ctx.beginPath();
+          ctx.moveTo(-r * 0.8, 0); ctx.lineTo(0, dirY * r * 0.8); ctx.lineTo(r * 0.8, 0); ctx.lineTo(0, -dirY * r * 0.8);
+          ctx.closePath();
+          ctx.fillStyle = 'rgba(247,37,133,.2)'; ctx.fill(); ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(-r * 0.4, dirY * r * 1.2); ctx.lineTo(0, dirY * r * 1.75); ctx.lineTo(r * 0.4, dirY * r * 1.2);
+          ctx.stroke();
+          ctx.restore();
+        } else {
+          phiHead(lx, lyHead, r, '#4cc9f0', alpha, urgency);
+        }
       }
-    }
-    ctx.restore();
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    });
 
     // 命中闪光（屏幕坐标）
     phiFlashes = phiFlashes.filter(f => now - f.t0 < 0.45);
@@ -798,29 +893,11 @@
       const p = (now - f.t0) / 0.45;
       ctx.globalAlpha = (1 - p) * 0.85;
       ctx.strokeStyle = '#aef7ff'; ctx.lineWidth = 3 * (1 - p);
-      ctx.shadowColor = col; ctx.shadowBlur = 18;
+      ctx.shadowColor = '#4cc9f0'; ctx.shadowBlur = 18;
       ctx.beginPath(); ctx.arc(f.x, f.y, r * (0.6 + p * 2.2), 0, Math.PI * 2); ctx.stroke();
       ctx.shadowBlur = 0;
     }
     ctx.globalAlpha = 1;
-
-    // 过章横幅：玩法换段时提示
-    if (phiBanner) {
-      const p = (now - phiBanner.t0) / 2.4;
-      if (p >= 1) phiBanner = null;
-      else {
-        const a = p < 0.15 ? p / 0.15 : 1 - Math.max(0, (p - 0.55) / 0.45);
-        ctx.globalAlpha = Math.max(0, a);
-        ctx.textAlign = 'center';
-        ctx.fillStyle = phiBanner.color;
-        ctx.shadowColor = phiBanner.color; ctx.shadowBlur = 24;
-        ctx.font = '800 ' + Math.round(Math.min(W, H) * 0.072) + 'px "Segoe UI",sans-serif';
-        ctx.fillText(phiBanner.text, W / 2, H * 0.2);
-        ctx.font = '600 ' + Math.round(Math.min(W, H) * 0.03) + 'px "Segoe UI",sans-serif';
-        ctx.fillText(phiBanner.tag, W / 2, H * 0.2 + Math.min(W, H) * 0.06);
-        ctx.shadowBlur = 0; ctx.globalAlpha = 1;
-      }
-    }
   }
 
   /* 沿波浪线取某一点 */
@@ -1327,7 +1404,9 @@
     cnt = { perfect: 0, good: 0, miss: 0 };
     notes = []; particles = []; ripples = []; floats = []; iconBursts = []; tapRipples = []; links = []; lightFalls = []; jointFx = [];
     phiFlashes = []; pointers.clear(); taikoFx = [];
-    phiStage = -1; phiBanner = null;
+    phiStage = -1;
+    document.getElementById('phi-banner').classList.remove('on');
+    document.getElementById('phi-stage').classList.add('hidden');
     document.getElementById('prog').classList.add('hidden');
     lastNote = null;
     updateHud();
