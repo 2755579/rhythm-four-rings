@@ -7,17 +7,24 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="律动四环">
-<meta name="theme-color" content="#0b0f1a">
+<meta name="theme-color" content="#08172a">
 <link rel="apple-touch-icon" href="assets/icons/appicon.png">
 <link rel="manifest" href="manifest.json">
 <title>律动四环 · 同心打击</title>
 <style>
+  /* 洛天依主题：天依蓝 66CCFF 为主色，淡粉/薄荷为辅色 */
+  :root {
+    --ty-blue:#66ccff; --ty-blue-soft:#a8e6ff; --ty-blue-dim:rgba(102,204,255,.28);
+    --ty-pink:#ff9ecb; --ty-jade:#9df5e1; --ty-ink:#e8f7ff;
+    --ty-glass:linear-gradient(150deg, rgba(102,204,255,.20), rgba(12,34,60,.42) 62%, rgba(255,158,203,.10));
+    --ty-glass-2:linear-gradient(150deg, rgba(102,204,255,.10), rgba(10,26,46,.30));
+  }
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html,body { height:100%; overflow:hidden; background:#0b0f1a url('assets/bg.jpg') center/cover no-repeat fixed; font-family:"Segoe UI","Microsoft YaHei",sans-serif; color:#eef; user-select:none; }
   body::before { content:""; position:fixed; inset:0; background:
-      radial-gradient(55% 45% at 50% 0%, rgba(76,201,240,.10), transparent 70%),
-      radial-gradient(45% 40% at 50% 110%, rgba(233,196,106,.08), transparent 70%),
-      rgba(8,11,20,.32);   /* 深色蒙版（调亮，让封面人物可见） */
+      radial-gradient(58% 48% at 50% 0%, rgba(102,204,255,.18), transparent 72%),
+      radial-gradient(46% 42% at 50% 112%, rgba(255,158,203,.12), transparent 72%),
+      rgba(8,17,30,.34);   /* 深色蒙版（调亮，让封面人物可见） */
       pointer-events:none; }
 
   /* 全息感：极淡扫描线 + 边缘光晕 */
@@ -35,7 +42,7 @@
   #combo.bump { transform:translateX(-50%) scale(1.18); }
 
   #btn-pause { position:fixed; top:8px; right:10px; z-index:8; width:34px; height:34px; border-radius:50%;
-      border:1px solid rgba(233,196,106,.25); background:rgba(11,15,26,.28); color:#e9c46a;
+      border:1px solid rgba(102,204,255,.30); background:rgba(11,26,44,.32); color:#66ccff;
       font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center;
       opacity:.35; transition:opacity .3s; }
   #btn-pause:active { opacity:.9; }
@@ -58,32 +65,65 @@
       color:#8ff3ec; opacity:.6; font-variant-numeric:tabular-nums;
       text-shadow:0 0 8px rgba(76,201,240,.8); }
 
-  /* 模式选择器 */
+  /* 模式选择器（洛天依玻璃卡） */
   #mode-row { display:flex; gap:12px; justify-content:center; width:min(620px,94%); flex-wrap:wrap; }
-  .mode-card { cursor:pointer; padding:12px 16px; border-radius:18px; min-width:112px;
-      border:1px solid rgba(233,196,106,.35); background:rgba(233,196,106,.06);
-      color:#e9c46a; font-size:15px; font-weight:600; transition:.2s; text-align:center;
-      display:flex; flex-direction:column; align-items:center; gap:6px; line-height:1.2; }
-  .mode-card .icon { font-size:28px; line-height:1; }
+  .mode-card { cursor:pointer; padding:13px 16px; border-radius:20px; min-width:116px;
+      border:1px solid var(--ty-blue-dim); background:var(--ty-glass-2);
+      -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
+      color:#bfe9ff; font-size:15px; font-weight:600; transition:.22s; text-align:center;
+      display:flex; flex-direction:column; align-items:center; gap:6px; line-height:1.2;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.10), 0 4px 14px rgba(3,14,28,.35); }
+  .mode-card .icon { font-size:28px; line-height:1; filter:drop-shadow(0 0 10px rgba(102,204,255,.55)); }
   .mode-card .desc { font-size:11px; opacity:.55; font-weight:400; letter-spacing:.02em; }
-  .mode-card:hover { background:rgba(233,196,106,.18); transform:translateY(-2px); box-shadow:0 0 24px rgba(233,196,106,.25); }
-  .mode-card.active { background:rgba(233,196,106,.22); border-color:#e9c46a; box-shadow:0 0 30px rgba(233,196,106,.4); }
+  .mode-card:hover { border-color:rgba(102,204,255,.7); background:var(--ty-glass); transform:translateY(-2px);
+      box-shadow:0 0 24px rgba(102,204,255,.30), inset 0 1px 0 rgba(255,255,255,.18); }
+  .mode-card.active { border-color:var(--ty-blue); color:#fff;
+      background:linear-gradient(150deg, rgba(102,204,255,.34), rgba(12,34,60,.42) 60%, rgba(255,158,203,.16));
+      box-shadow:0 0 28px rgba(102,204,255,.45), inset 0 0 20px rgba(102,204,255,.18); }
 
   #game { position:fixed; inset:0; z-index:2; touch-action:none; pointer-events:auto; display:block; }
   #stage-wrap { position:fixed; inset:0; z-index:2; pointer-events:none; }
 
-  .overlay { position:fixed; inset:0; background:linear-gradient(180deg,rgba(8,11,20,.35),rgba(8,11,20,.72)); -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); display:flex; flex-direction:column;
+  .overlay { position:fixed; inset:0;
+      background:radial-gradient(62% 52% at 50% 0%, rgba(102,204,255,.20), transparent 72%),
+                 linear-gradient(180deg,rgba(6,16,30,.40),rgba(5,12,24,.82));
+      -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); display:flex; flex-direction:column;
       align-items:center; justify-content:flex-start; gap:18px; z-index:10; text-align:center; padding:28px 24px 40px; overflow-y:auto; padding-top:env(safe-area-inset-top,28px); }
-  .overlay h1 { font-size:clamp(28px,6vw,46px); font-weight:800; letter-spacing:.12em;
-      background:linear-gradient(90deg,#e9c46a,#f72585,#4cc9f0); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .overlay h1 { font-size:clamp(28px,6vw,46px); font-weight:800; letter-spacing:.14em;
+      background:linear-gradient(100deg,#ffffff,#66ccff 38%,#9df5e1 62%,#ff9ecb 92%);
+      -webkit-background-clip:text; background-clip:text; color:transparent;
+      filter:drop-shadow(0 0 18px rgba(102,204,255,.55)); }
   .overlay p.sub { opacity:.6; font-size:14px; line-height:1.9; max-width:540px; }
-  .btn { padding:14px 34px; border-radius:999px; border:1px solid rgba(233,196,106,.5); background:rgba(233,196,106,.08);
-      color:#e9c46a; font-size:17px; font-weight:600; cursor:pointer; transition:.2s; letter-spacing:.05em; }
-  .btn:hover { background:rgba(233,196,106,.2); box-shadow:0 0 24px rgba(233,196,106,.35); transform:translateY(-2px); }
-  .btn.alt { border-color:rgba(76,201,240,.5); color:#4cc9f0; background:rgba(76,201,240,.07); }
-  .btn.alt:hover { background:rgba(76,201,240,.18); box-shadow:0 0 24px rgba(76,201,240,.3); }
+
+  /* 洛天依铭牌 */
+  .ty-badge { display:inline-flex; align-items:center; gap:8px; padding:6px 16px; border-radius:999px;
+      border:1px solid rgba(102,204,255,.35); background:rgba(102,204,255,.09);
+      color:#9be8ff; font-size:11px; letter-spacing:.24em;
+      box-shadow:0 0 18px rgba(102,204,255,.18); }
+  .ty-badge::before { content:""; width:6px; height:6px; border-radius:50%; background:#66ccff;
+      box-shadow:0 0 10px #66ccff; animation:tyPulse 2.4s ease-in-out infinite; }
+  @keyframes tyPulse { 0%,100% { opacity:.4; transform:scale(.85); } 50% { opacity:1; transform:scale(1.2); } }
+
+  /* 按钮：天依蓝玻璃胶囊 + 掠光 */
+  .btn { position:relative; overflow:hidden; padding:13px 30px; border-radius:999px;
+      border:1px solid rgba(102,204,255,.45);
+      background:linear-gradient(140deg, rgba(102,204,255,.22), rgba(16,44,74,.55) 58%, rgba(255,158,203,.12));
+      color:#e8f7ff; font-size:16px; font-weight:600; cursor:pointer; letter-spacing:.04em;
+      -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
+      box-shadow:0 6px 18px rgba(3,12,24,.42), inset 0 1px 0 rgba(255,255,255,.16);
+      transition:transform .18s, box-shadow .25s, border-color .25s, background .25s; }
+  .btn:hover { transform:translateY(-2px); border-color:rgba(102,204,255,.95);
+      box-shadow:0 10px 28px rgba(102,204,255,.35), inset 0 1px 0 rgba(255,255,255,.26); }
+  .btn:active { transform:translateY(0) scale(.985); }
+  .btn::after { content:""; position:absolute; inset:0; pointer-events:none;
+      background:linear-gradient(115deg, transparent 35%, rgba(255,255,255,.30) 50%, transparent 65%);
+      transform:translateX(-120%); transition:transform .55s ease; }
+  .btn:hover::after { transform:translateX(120%); }
+  .btn.alt { border-color:rgba(168,230,255,.30); color:#bfe9ff;
+      background:linear-gradient(140deg, rgba(102,204,255,.10), rgba(10,28,48,.42)); }
+  .btn.alt:hover { border-color:rgba(102,204,255,.8); box-shadow:0 8px 24px rgba(102,204,255,.25); }
   #file-input { display:none; }
-  #song-name { font-size:13px; color:#80ed99; min-height:18px; }
+  #song-name { font-size:13px; color:#9be8ff; min-height:18px; text-shadow:0 0 12px rgba(102,204,255,.4); }
   .stat-row { display:flex; gap:34px; font-size:15px; }
   .stat-row b { display:block; font-size:30px; margin-top:4px; }
   #rank { font-size:84px; font-weight:900; color:#e9c46a; text-shadow:0 0 40px rgba(233,196,106,.7); }
@@ -92,7 +132,7 @@
   /* 竖屏提示（iOS 无法锁定方向，请手动横屏） */
   #rotate-hint { position:fixed; inset:0; z-index:12; display:none; flex-direction:column;
       align-items:center; justify-content:center; gap:16px; text-align:center;
-      background:rgba(6,10,18,.94); color:#e9c46a; font-size:19px; letter-spacing:.06em; }
+      background:rgba(6,12,22,.94); color:#66ccff; font-size:19px; letter-spacing:.06em; }
   #rotate-hint .ico { font-size:52px; animation:spin 2.2s ease-in-out infinite; }
   @keyframes spin { 0%,100% { transform:rotate(0); } 50% { transform:rotate(90deg); } }
   @media (orientation:portrait) { #rotate-hint.on { display:flex; } }
@@ -115,6 +155,7 @@
 
 <div class="overlay" id="start-overlay">
   <h1>律动四环</h1>
+  <div class="ty-badge">洛天依 · 66CCFF</div>
   <p class="sub">选一种玩法开始：</p>
   <div id="mode-row">
     <div class="mode-card active" data-mode="ring"><div class="icon">🎯</div>同心圆环<div class="desc">光点在左右舞台交替出现</div></div>
@@ -131,18 +172,18 @@
   <button class="btn alt" id="btn-us3">🎤 天気の子 — STRlighT</button>
   <div style="display:flex;gap:10px;width:min(540px,92%)">
     <input id="url-input" type="text" placeholder="粘贴音乐直链（mp3/flac/ogg）。汽水/网易云等 App 内分享链接有版权加密，浏览器无法读取"
-      style="flex:1;padding:12px 18px;border-radius:999px;border:1px solid rgba(76,201,240,.4);background:rgba(11,15,26,.7);color:#eef;font-size:14px;outline:none">
+      style="flex:1;padding:12px 18px;border-radius:999px;border:1px solid rgba(102,204,255,.38);background:rgba(9,24,42,.72);color:#eef;font-size:14px;outline:none">
     <button class="btn alt" id="btn-url" style="padding:12px 22px;white-space:nowrap">▶ 播放</button>
   </div>
   <button class="btn" id="btn-song1">🎧 Faster Does It（电子强拍）</button>
   <button class="btn alt" id="btn-song2">🎧 Pixel Peeker Polka（欢快节奏）</button>
   <button class="btn alt" id="btn-song3">🎧 Monkeys Spinning Monkeys（跳跃鼓点）</button>
   <div style="width:min(540px,92%);text-align:left">
-    <div style="display:flex;justify-content:space-between;font-size:14px;color:#80ed99;margin-bottom:6px">
+    <div style="display:flex;justify-content:space-between;font-size:14px;color:#9be8ff;margin-bottom:6px">
       <span>🎚️ 速度 / 难度</span><span id="speed-val">0.6×</span>
     </div>
     <input id="speed-slider" type="range" min="0.6" max="2.0" step="0.1" value="0.6"
-      style="width:100%;accent-color:#4cc9f0">
+      style="width:100%;accent-color:#66ccff">
     <div style="display:flex;justify-content:space-between;font-size:11px;opacity:.4;margin-top:2px">
       <span>慢 (0.6×)</span><span>普通 (1.0×)</span><span>快 (2.0×)</span>
     </div>
