@@ -627,8 +627,13 @@
     } else if (GAME_MODE === 'fall') {
       const lane = pickLane(hitAt);
       const holdTime = wantHold(hitAt);
+      // 拐弯长按：40% 的长按尾巴滑到相邻车道
+      const laneEnd = holdTime > 0 && Math.random() < 0.4
+        ? lane + (lane === 0 ? 1 : lane === 3 ? -1 : (Math.random() < 0.5 ? 1 : -1))
+        : lane;
       laneFreeAt[lane] = hitAt + holdTime + 0.2;
-      notes.push({ mode: 'fall', lane, hitAt, born: hitAt - LEAD_IN, judged: false, holdTime, holding: false });
+      laneFreeAt[laneEnd] = hitAt + holdTime + 0.2;
+      notes.push({ mode: 'fall', lane, laneEnd, hitAt, born: hitAt - LEAD_IN, judged: false, holdTime, holding: false });
     } else if (GAME_MODE === 'taiko') {
       const side = pickSide(hitAt);
       const holdTime = wantHold(hitAt);
@@ -1174,7 +1179,9 @@
     const head = notePos(n);
     if (n.mode === 'fall') {
       const spd = (H * 0.82 - H * 0.25) / LEAD_IN;
-      return { x: head.x, y: Math.max(-60, head.y - n.holdTime * spd) };
+      const laneW = W / 4;
+      const endLane = n.laneEnd !== undefined ? n.laneEnd : n.lane;
+      return { x: (endLane + 0.5) * laneW, y: Math.max(-60, head.y - n.holdTime * spd) };
     }
     const now = actx ? actx.currentTime : 0;
     const fromX = n.side === 'L' ? -W * 0.08 : W * 1.08;
@@ -1206,7 +1213,7 @@
     if (GAME_MODE !== 'fall' && GAME_MODE !== 'taiko') return;
     const now = actx.currentTime;
     let lane = laneIdx;
-    if (lane === null && px !== null && px !== undefined) {
+    if (lane === null && Number.isFinite(px)) {
       lane = GAME_MODE === 'fall'
         ? Math.min(3, Math.max(0, Math.floor(px / (W / 4))))
         : (px < W / 2 ? 0 : 1);
@@ -1390,25 +1397,49 @@
       } else if (GAME_MODE === 'fall') {
         const rectW = W / 4 * 0.7;
         const rectH = 36;
-        // 长按：先画从按钮向上延伸的整条身体
+        // 长按：先画从按钮向上延伸的整条身体；尾巴换道时画成拐弯的曲线
         if (n.holdTime > 0) {
           const spd = (H * 0.82 - H * 0.25) / LEAD_IN;
           const tailY = Math.max(-70, p.y - n.holdTime * spd);
-          const gb = ctx.createLinearGradient(p.x, tailY, p.x, p.y);
-          gb.addColorStop(0, 'rgba(128,237,153,.10)');
-          gb.addColorStop(1, n.holding ? 'rgba(128,237,153,.85)' : 'rgba(128,237,153,.45)');
+          const laneW = W / 4;
+          const tailX = ((n.laneEnd !== undefined ? n.laneEnd : n.lane) + 0.5) * laneW;
+          const bend = tailX !== p.x;
+          // 拐弯段只发生在靠近尾巴的 30% 行程，其余保持直线
+          const bendY = bend ? tailY + Math.max(60, (p.y - tailY) * 0.3) : tailY;
+          const curve = s => {   // s: 0=头 1=尾
+            const y = p.y + (tailY - p.y) * s;
+            const x = !bend ? p.x : p.x + (tailX - p.x) * Math.max(0, (y - bendY) / (tailY - bendY));
+            return { x, y };
+          };
+          const segN = bend ? 24 : 2;
           ctx.globalAlpha = appear;
-          ctx.fillStyle = gb;
+          ctx.strokeStyle = n.holding ? 'rgba(128,237,153,.85)' : 'rgba(128,237,153,.45)';
+          ctx.lineWidth = rectW * 0.56; ctx.lineCap = 'round';
           ctx.shadowColor = '#80ed99'; ctx.shadowBlur = n.holding ? 18 : 8;
           ctx.beginPath();
-          ctx.roundRect(p.x - rectW * 0.28, tailY, rectW * 0.56, Math.max(1, p.y - tailY), 10);
-          ctx.fill();
+          for (let i = 0; i <= segN; i++) { const q = curve(i / segN); i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y); }
+          ctx.stroke();
           ctx.shadowBlur = 0;
-          // 尾巴端点
+          // 内芯亮线，让拐弯更清楚
+          ctx.strokeStyle = n.holding ? 'rgba(255,255,255,.5)' : 'rgba(255,255,255,.25)';
+          ctx.lineWidth = rectW * 0.14;
+          ctx.beginPath();
+          for (let i = 0; i <= segN; i++) { const q = curve(i / segN); i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y); }
+          ctx.stroke();
+          // 尾巴端点（带方向小箭头提示换道）
           ctx.strokeStyle = '#80ed99'; ctx.lineWidth = 2;
           ctx.beginPath();
-          ctx.roundRect(p.x - rectW * 0.34, tailY - 4, rectW * 0.68, 8, 4);
+          ctx.roundRect(tailX - rectW * 0.34, tailY - 4, rectW * 0.68, 8, 4);
           ctx.stroke();
+          if (bend) {
+            ctx.fillStyle = '#80ed99';
+            const dir = Math.sign(tailX - p.x);
+            ctx.beginPath();
+            ctx.moveTo(tailX + dir * 10, tailY - 12);
+            ctx.lineTo(tailX - dir * 2, tailY - 20);
+            ctx.lineTo(tailX - dir * 2, tailY - 4);
+            ctx.closePath(); ctx.fill();
+          }
           ctx.globalAlpha = appear;
         }
         // 下落音符：长方形方块 + 上方小尾迹
@@ -1731,8 +1762,12 @@
   // 触屏/鼠标点击：坐标用 getBoundingClientRect 校准，避免 WebView 偏移
   function getCanvasXY(e) {
     const r = cv.getBoundingClientRect();
-    const x = (e.clientX - r.left) * (W / r.width);
-    const y = (e.clientY - r.top) * (H / r.height);
+    // 触摸事件没有 clientX，要从 touches / changedTouches 里取
+    const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+    const cx = e.clientX ?? (t ? t.clientX : NaN);
+    const cy = e.clientY ?? (t ? t.clientY : NaN);
+    const x = (cx - r.left) * (W / r.width);
+    const y = (cy - r.top) * (H / r.height);
     return { x, y };
   }
   let _lastTap = 0;
